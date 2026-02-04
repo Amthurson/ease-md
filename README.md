@@ -4,19 +4,22 @@ A lightweight, Typora-style Markdown editor for Windows and macOS, built with Ta
 
 ## Getting started
 
-This repository provides a minimal Tauri shell and a static `dist/` page to confirm the desktop wrapper boots.
+This repository provides a minimal Tauri shell with a Vite + CodeMirror 6 frontend for editing and previewing Markdown.
 
 ### Prerequisites
 
 - Rust (stable)
-- Node.js (for future frontend tooling)
+- Node.js (for frontend tooling)
 - Tauri CLI (`cargo install tauri-cli`)
 
 ### Run the app
 
 ```bash
+npm install
 cargo tauri dev
 ```
+
+The Tauri dev command will launch the Vite dev server automatically.
 
 ## Roadmap
 

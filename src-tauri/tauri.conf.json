@@ -1,24 +1,39 @@
 {
+  "productName": "Ease MD",
+  "version": "0.1.0",
+  "identifier": "com.ease.md",
   "build": {
     "beforeDevCommand": "",
     "beforeBuildCommand": "",
-    "devPath": "../dist",
-    "distDir": "../dist"
+    "frontendDist": [
+      "../dist/index.html",
+      "../dist/main.js",
+      "../dist/main.css",
+      "../dist/main.js.map",
+      "../dist/main.css.map"
+    ]
   },
-  "package": {
-    "productName": "Ease MD",
-    "version": "0.1.0"
-  },
-  "tauri": {
+  "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Ease MD",
         "width": 960,
-        "height": 640
+        "height": 640,
+        "url": "tauri://localhost/index.html",
+        "devtools": true
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "capabilities": ["main-capability"]
     }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.ico"
+    ]
   }
 }

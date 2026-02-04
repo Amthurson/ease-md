@@ -1,38 +1,74 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ease MD</title>
-    <style>
-      :root {
-        color-scheme: light dark;
-        font-family: system-ui, sans-serif;
-      }
-      body {
-        margin: 0;
-        display: grid;
-        place-items: center;
-        min-height: 100vh;
-      }
-      main {
-        text-align: center;
-        max-width: 480px;
-        padding: 2rem;
-      }
-      h1 {
-        margin-bottom: 0.5rem;
-      }
-      p {
-        margin: 0.25rem 0;
-      }
-    </style>
+    <link rel="stylesheet" href="./main.css" />
   </head>
   <body>
-    <main>
-      <h1>Ease MD</h1>
-      <p>Lightweight Markdown editor shell.</p>
-      <p>Next: hook up the editor engine and PicGo upload pipeline.</p>
-    </main>
+    <div id="app" class="split-view">
+      <div class="layout">
+        <aside class="sidebar">
+          <div class="sidebar-tabs">
+            <button id="filesTab" class="tab active">Files</button>
+            <button id="outlineTab" class="tab">Outline</button>
+          </div>
+          <div id="filesPane" class="sidebar-pane">
+            <div id="folderPath" class="folder-path">No folder selected.</div>
+            <ul id="folderList" class="folder-list"></ul>
+            <div id="recentPane" class="hidden">
+              <div class="sidebar-title">Recent</div>
+              <ul id="recentList" class="recent-list"></ul>
+              <div class="sidebar-hint">Tip: drag a file in later to open.</div>
+            </div>
+          </div>
+          <div id="outlinePane" class="sidebar-pane hidden">
+            <div class="sidebar-title">Outline</div>
+            <ul id="outlineList" class="outline-list"></ul>
+            <div class="sidebar-hint">Headings update as you type.</div>
+          </div>
+        </aside>
+        <div id="sidebarResizer" class="sidebar-resizer" title="Resize sidebar"></div>
+        <section class="editor-pane">
+          <div id="editor" class="editor"></div>
+          <textarea id="sourceEditor" class="source-editor hidden" spellcheck="false"></textarea>
+        </section>
+      </div>
+      <footer class="footer">
+        <div class="footer-left">
+          <div id="filePath" class="file-path">Untitled</div>
+          <span id="statusMsg" class="status-msg">Ready</span>
+        </div>
+        <div class="meta">
+          <span id="wordCount">0 words</span>
+          <span id="dirtyFlag" class="dirty">Saved</span>
+          <div class="footer-actions">
+            <button id="toggleSourceBtn" class="ghost small">Source</button>
+            <button id="themeBtn" class="ghost icon-btn" aria-label="Toggle theme">
+              <span id="themeIcon" class="theme-icon" aria-hidden="true">☀️</span>
+            </button>
+          </div>
+        </div>
+      </footer>
+    </div>
+
+    <div id="contextMenu" class="context-menu hidden">
+      <button data-action="heading1">Heading 1</button>
+      <button data-action="heading2">Heading 2</button>
+      <button data-action="heading3">Heading 3</button>
+      <button data-action="bold">Bold</button>
+      <button data-action="italic">Italic</button>
+      <button data-action="blockquote">Quote</button>
+      <button data-action="codeblock">Code Block</button>
+      <button data-action="table">Table</button>
+      <button data-action="hr">Divider</button>
+      <button data-action="bullet">Bullet List</button>
+      <button data-action="ordered">Ordered List</button>
+      <button data-action="link">Link</button>
+      <button data-action="image">Image</button>
+    </div>
+
+    <script type="module" src="./main.js"></script>
   </body>
 </html>

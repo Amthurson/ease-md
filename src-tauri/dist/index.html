@@ -1,0 +1,48 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ease MD</title>
+    <link rel="stylesheet" href="./main.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="brand">Ease MD</div>
+        <div class="actions">
+          <button id="newBtn" class="ghost">New</button>
+          <button id="openBtn" class="ghost">Open</button>
+          <button id="saveBtn" class="primary">Save</button>
+          <button id="saveAsBtn" class="ghost">Save As</button>
+          <button id="themeBtn" class="ghost">Theme</button>
+          <button id="togglePreviewBtn" class="ghost">Toggle Preview</button>
+        </div>
+        <div class="status" id="status">Ready</div>
+      </header>
+      <div class="layout">
+        <aside class="sidebar">
+          <div class="sidebar-title">Recent</div>
+          <ul id="recentList" class="recent-list"></ul>
+          <div class="sidebar-hint">Tip: drag a file in later to open.</div>
+        </aside>
+        <section class="editor-pane">
+          <div class="pane-title">Editor</div>
+          <div id="editor" class="editor"></div>
+        </section>
+        <section class="preview-pane" id="previewPane">
+          <div class="pane-title">Preview</div>
+          <div id="preview" class="preview"></div>
+        </section>
+      </div>
+      <footer class="footer">
+        <div id="filePath" class="file-path">Untitled</div>
+        <div class="meta">
+          <span id="wordCount">0 words</span>
+          <span id="dirtyFlag" class="dirty">Saved</span>
+        </div>
+      </footer>
+    </div>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
