@@ -333,31 +333,47 @@ function toPathString(value: unknown, fallback: string) {
   return fallback;
 }
 
-function buildTree(entries: any[], basePath: string): TreeNode[] {
+async function scanDirTree(basePath: string): Promise<TreeNode[]> {
+  const entries = await readDir(basePath, { recursive: false });
   const nodes: TreeNode[] = [];
+
   for (const entry of entries) {
     const rawPath = toPathString(entry?.path, "");
     const name = entry?.name ?? normalizeName(rawPath || basePath);
     const fallbackPath = rawPath || `${basePath.replace(/[/\\]+$/, "")}/${name}`;
-    const isDir = Array.isArray(entry.children);
-    const node: TreeNode = {
-      name,
-      path: toPathString(entry?.path, fallbackPath),
-      children: [],
-      isFile: !isDir
-    };
+    const entryPath = toPathString(entry?.path, fallbackPath);
+    const isDir = entry?.isDirectory === true || Array.isArray(entry?.children);
+
     if (isDir) {
-      node.children = buildTree(entry.children, node.path);
-    }
-    if (node.isFile) {
-      if (!isMarkdownFile(node.name)) {
-        continue;
+      let children: TreeNode[] = [];
+      try {
+        children = await scanDirTree(entryPath);
+      } catch (error) {
+        console.error("scanDirTree child failed", entryPath, error);
       }
-      nodes.push(node);
-    } else {
-      nodes.push(node);
+      if (children.length > 0) {
+        nodes.push({
+          name,
+          path: entryPath,
+          isFile: false,
+          children
+        });
+      }
+      continue;
     }
+
+    if (!isMarkdownFile(name)) {
+      continue;
+    }
+
+    nodes.push({
+      name,
+      path: entryPath,
+      isFile: true,
+      children: []
+    });
   }
+
   return nodes.sort((a, b) => {
     if (a.isFile !== b.isFile) {
       return a.isFile ? 1 : -1;
@@ -386,7 +402,7 @@ function renderTree(nodes: TreeNode[], container: HTMLElement) {
       const target = event.currentTarget as HTMLElement;
       const filePath = target.dataset.path ?? "";
       if (node.isFile && filePath) {
-        void openPath(filePath);
+        void openPath(filePath, { updateFolder: false });
       }
     });
     item.appendChild(row);
@@ -396,6 +412,25 @@ function renderTree(nodes: TreeNode[], container: HTMLElement) {
     list.appendChild(item);
   });
   container.appendChild(list);
+}
+
+function updateTreeActive(path: string | null) {
+  folderListEl
+    .querySelectorAll(".folder-tree .node.active")
+    .forEach((node) => node.classList.remove("active"));
+  if (!path) {
+    return;
+  }
+  const escaped = typeof (window as any).CSS?.escape === "function"
+    ? (window as any).CSS.escape(path)
+    : path.replace(/"/g, '\\"');
+  const target = folderListEl.querySelector(
+    `.folder-tree .node.file[data-path="${escaped}"]`
+  ) as HTMLElement | null;
+  if (target) {
+    target.classList.add("active");
+    target.scrollIntoView({ block: "nearest" });
+  }
 }
 
 async function refreshFolderFiles() {
@@ -408,8 +443,7 @@ async function refreshFolderFiles() {
     return;
   }
   try {
-    const entries = await readDir(currentFolder, { recursive: true });
-    const tree = buildTree(entries, currentFolder);
+    const tree = await scanDirTree(currentFolder);
     const rootNode: TreeNode = {
       name: normalizeName(currentFolder),
       path: currentFolder,
@@ -711,7 +745,11 @@ function setEditorContent(text: string) {
   updateOutline();
 }
 
-async function openPath(path: string) {
+async function openPath(
+  path: string,
+  options: { updateFolder?: boolean } = {}
+) {
+  const updateFolder = options.updateFolder ?? false;
   try {
     const pathValue = toPathString(path, "");
     if (!pathValue) {
@@ -720,13 +758,17 @@ async function openPath(path: string) {
     const text = await readTextFile(pathValue);
     setEditorContent(text);
     setFilePath(pathValue);
-    const folder = await dirname(pathValue);
-    setFolder(folder);
-    addRecent(path);
+    if (updateFolder) {
+      const folder = await dirname(pathValue);
+      setFolder(folder);
+    } else {
+      updateTreeActive(pathValue);
+    }
+    addRecent(pathValue);
     isDirty = false;
     setDirtyFlag();
     setStatus("Loaded file");
-    await maybeRestoreDraft(path, text);
+    await maybeRestoreDraft(pathValue, text);
   } catch (error) {
     console.error(error);
     setStatus("Failed to open file");
@@ -744,7 +786,7 @@ async function openFile() {
   if (!result || Array.isArray(result)) {
     return;
   }
-  await openPath(result);
+  await openPath(result, { updateFolder: true });
 }
 
 async function saveFile() {
