@@ -17,7 +17,8 @@
     "windows": [
       {
         "label": "main",
-        "title": "Ease MD",
+        "title": "Untitled - Ease MD",
+        "minWidth": 484,
         "width": 960,
         "height": 640,
         "url": "tauri://localhost/index.html",

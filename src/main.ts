@@ -2,6 +2,7 @@
 
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
+import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import Link from "@tiptap/extension-link";
 import Image from "@tiptap/extension-image";
 import Table from "@tiptap/extension-table";
@@ -9,6 +10,7 @@ import TableRow from "@tiptap/extension-table-row";
 import TableHeader from "@tiptap/extension-table-header";
 import TableCell from "@tiptap/extension-table-cell";
 import { TextSelection } from "@tiptap/pm/state";
+import { common, createLowlight } from "lowlight";
 import MarkdownIt from "markdown-it";
 import hljs from "highlight.js";
 import TurndownService from "turndown";
@@ -20,7 +22,8 @@ import {
   writeFile,
   mkdir,
   exists,
-  readDir
+  readDir,
+  remove
 } from "@tauri-apps/plugin-fs";
 import { dirname, join, extname, pictureDir } from "@tauri-apps/api/path";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -48,26 +51,49 @@ const toggleSourceBtn = document.querySelector<HTMLButtonElement>(
 const sourceEditor = document.querySelector<HTMLTextAreaElement>("#sourceEditor")!;
 const themeBtn = document.querySelector<HTMLButtonElement>("#themeBtn")!;
 const themeIcon = document.querySelector<HTMLSpanElement>("#themeIcon")!;
+const editorPaneEl = document.querySelector<HTMLElement>(".editor-pane")!;
+const sidebarToggleBtn = document.querySelector<HTMLButtonElement>("#sidebarToggleBtn")!;
+const appWindow = getCurrentWindow();
 
 const SIDEBAR_WIDTH_KEY = "ease-md:sidebar-width";
+const SIDEBAR_COLLAPSED_KEY = "ease-md:sidebar-collapsed";
 const SIDEBAR_MIN = 200;
 const SIDEBAR_MAX = 420;
 let resizeGuide: HTMLDivElement | null = null;
+const lowlight = createLowlight(common);
+const CODE_LANGUAGES = ["plaintext", ...lowlight.listLanguages().sort()];
 
 const md = new MarkdownIt({
   html: false,
   linkify: true,
-  typographer: true
+  typographer: true,
+  breaks: true
 });
 md.set({
   highlight: (code, lang) => {
     if (lang && hljs.getLanguage(lang)) {
-      return `<pre class="hljs"><code>${hljs.highlight(code, { language: lang }).value}</code></pre>`;
+      return `<pre class="hljs"><code class="language-${lang}">${hljs.highlight(code, { language: lang }).value}</code></pre>`;
     }
-    return `<pre class="hljs"><code>${md.utils.escapeHtml(code)}</code></pre>`;
+    return `<pre class="hljs"><code class="language-plaintext">${md.utils.escapeHtml(code)}</code></pre>`;
   }
 });
 const turndown = new TurndownService({ codeBlockStyle: "fenced" });
+turndown.addRule("codeBlockWithLanguage", {
+  filter: (node) =>
+    node.nodeName === "PRE" &&
+    node.firstChild?.nodeName === "CODE",
+  replacement: (_content, node) => {
+    const code = node.firstChild as HTMLElement | null;
+    const text = code?.textContent ?? "";
+    const className = code?.getAttribute("class") ?? "";
+    const langMatch =
+      className.match(/language-([a-z0-9_+-]+)/i) ??
+      className.match(/lang(?:uage)?-([a-z0-9_+-]+)/i);
+    const lang = langMatch?.[1]?.toLowerCase() ?? "";
+    const fence = `\`\`\`${lang}`;
+    return `\n\n${fence}\n${text.replace(/\n$/, "")}\n\`\`\`\n\n`;
+  }
+});
 turndown.addRule("imageWithOriginal", {
   filter: (node) =>
     node.nodeName === "IMG" && (node as HTMLElement).getAttribute("data-original"),
@@ -118,6 +144,46 @@ function decorateImages(html: string) {
     if (display !== raw) {
       img.setAttribute("data-original", raw);
       img.setAttribute("src", display);
+    }
+  });
+  return container.innerHTML;
+}
+
+function preserveLeadingWhitespace(html: string) {
+  const container = document.createElement("div");
+  container.innerHTML = html;
+  const walker = document.createTreeWalker(
+    container,
+    NodeFilter.SHOW_TEXT,
+    {
+      acceptNode: (node) => {
+        const parent = node.parentElement;
+        if (!parent) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        if (parent.closest("pre, code")) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    }
+  );
+  const nodes: Text[] = [];
+  while (walker.nextNode()) {
+    nodes.push(walker.currentNode as Text);
+  }
+  nodes.forEach((textNode) => {
+    const value = textNode.nodeValue ?? "";
+    if (!value) {
+      return;
+    }
+    const withTabs = value.replace(/\t/g, "  ");
+    const lines = withTabs.split(/\r?\n/);
+    const rebuilt = lines
+      .map((line) => line.replace(/^[ ]+/g, (match) => "\u00a0".repeat(match.length)))
+      .join("\n");
+    if (rebuilt !== value) {
+      textNode.nodeValue = rebuilt;
     }
   });
   return container.innerHTML;
@@ -269,6 +335,203 @@ let outlineTimer: number | undefined;
 let outlineHeadings: { level: number; text: string; pos?: number; line?: number }[] = [];
 let currentFolder: string | null = null;
 let allowClose = false;
+let hoverTimer: number | null = null;
+let hoverTooltip: HTMLDivElement | null = null;
+let codeLanguagePickerEl: HTMLDivElement | null = null;
+let codeLanguageSelectEl: HTMLSelectElement | null = null;
+let codeLanguageInputEl: HTMLInputElement | null = null;
+let isCodeLanguageInteracting = false;
+let currentContext: { type: "text" | "image"; imagePath?: string; imageRaw?: string; imagePos?: number } =
+  { type: "text" };
+
+function ensureHoverTooltip() {
+  if (hoverTooltip) {
+    return hoverTooltip;
+  }
+  const el = document.createElement("div");
+  el.className = "hover-tooltip hidden";
+  document.body.appendChild(el);
+  hoverTooltip = el;
+  return el;
+}
+
+function hideHoverTooltip() {
+  if (hoverTimer) {
+    window.clearTimeout(hoverTimer);
+    hoverTimer = null;
+  }
+  if (hoverTooltip) {
+    hoverTooltip.classList.add("hidden");
+  }
+}
+
+function scheduleHoverTooltip(target: HTMLElement, text: string) {
+  hideHoverTooltip();
+  hoverTimer = window.setTimeout(() => {
+    const tooltip = ensureHoverTooltip();
+    const rect = target.getBoundingClientRect();
+    tooltip.textContent = text;
+    tooltip.style.left = `${Math.min(rect.left, window.innerWidth - 360)}px`;
+    tooltip.style.top = `${rect.bottom + 8}px`;
+    tooltip.classList.remove("hidden");
+    hoverTimer = null;
+  }, 3000);
+}
+
+function normalizeCodeLanguage(value: unknown) {
+  const raw = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (!raw) {
+    return "plaintext";
+  }
+  return CODE_LANGUAGES.includes(raw) ? raw : "plaintext";
+}
+
+function ensureCodeLanguagePicker() {
+  if (codeLanguagePickerEl && codeLanguageSelectEl && codeLanguageInputEl) {
+    return {
+      wrapper: codeLanguagePickerEl,
+      select: codeLanguageSelectEl,
+      input: codeLanguageInputEl
+    };
+  }
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "code-language-picker hidden";
+  wrapper.addEventListener("pointerdown", (event) => {
+    event.stopPropagation();
+    isCodeLanguageInteracting = true;
+  });
+  wrapper.addEventListener("pointerup", () => {
+    isCodeLanguageInteracting = false;
+  });
+  wrapper.addEventListener("pointerleave", () => {
+    isCodeLanguageInteracting = false;
+  });
+
+  const label = document.createElement("span");
+  label.className = "code-language-label";
+  label.textContent = "Language";
+
+  const input = document.createElement("input");
+  input.className = "code-language-input";
+  input.type = "text";
+  input.placeholder = "Type to filter...";
+
+  const select = document.createElement("select");
+  select.className = "code-language-select";
+  const refreshOptions = (query = "") => {
+    const normalized = query.trim().toLowerCase();
+    select.innerHTML = "";
+    CODE_LANGUAGES.filter((lang) =>
+      normalized ? lang.includes(normalized) : true
+    ).forEach((language) => {
+      const option = document.createElement("option");
+      option.value = language;
+      option.textContent = language;
+      select.appendChild(option);
+    });
+  };
+  refreshOptions();
+
+  input.addEventListener("input", () => {
+    refreshOptions(input.value);
+  });
+
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      if (select.options.length > 0) {
+        select.selectedIndex = 0;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    }
+  });
+
+  select.addEventListener("change", () => {
+    if (!editor || isSourceMode) {
+      return;
+    }
+    const language = normalizeCodeLanguage(select.value);
+    editor
+      .chain()
+      .focus()
+      .updateAttributes("codeBlock", {
+        language: language === "plaintext" ? null : language
+      })
+      .run();
+  });
+
+  wrapper.appendChild(label);
+  wrapper.appendChild(input);
+  wrapper.appendChild(select);
+  document.body.appendChild(wrapper);
+
+  codeLanguagePickerEl = wrapper;
+  codeLanguageSelectEl = select;
+  codeLanguageInputEl = input;
+  return { wrapper, select, input };
+}
+
+function hideCodeLanguagePicker() {
+  if (!codeLanguagePickerEl) {
+    return;
+  }
+  if (isCodeLanguageInteracting) {
+    return;
+  }
+  codeLanguagePickerEl.classList.add("hidden");
+}
+
+function getActiveCodeBlockPos() {
+  if (!editor) {
+    return null;
+  }
+  const { $from } = editor.state.selection;
+  for (let depth = $from.depth; depth >= 0; depth -= 1) {
+    const node = $from.node(depth);
+    if (node.type.name === "codeBlock") {
+      return { pos: $from.before(depth), language: normalizeCodeLanguage(node.attrs.language) };
+    }
+  }
+  return null;
+}
+
+function updateCodeLanguagePicker() {
+  if (!editor || isSourceMode) {
+    hideCodeLanguagePicker();
+    return;
+  }
+  const active = getActiveCodeBlockPos();
+  if (!active) {
+    hideCodeLanguagePicker();
+    return;
+  }
+
+  const codeDom = editor.view.nodeDOM(active.pos) as HTMLElement | null;
+  if (!codeDom || !codeDom.getBoundingClientRect) {
+    hideCodeLanguagePicker();
+    return;
+  }
+
+  const blockRect = codeDom.getBoundingClientRect();
+  const { wrapper, select, input } = ensureCodeLanguagePicker();
+  if (select.value !== active.language) {
+    select.value = active.language;
+  }
+  if (input.value !== "" && !select.value) {
+    input.value = "";
+  }
+
+  wrapper.classList.remove("hidden");
+  const top = blockRect.bottom + 8;
+  const pickerWidth = wrapper.offsetWidth || 150;
+  const leftRaw = blockRect.right - pickerWidth;
+  const left = Math.max(8, Math.min(leftRaw, window.innerWidth - pickerWidth - 8));
+  wrapper.style.top = `${Math.max(8, Math.min(top, window.innerHeight - 40))}px`;
+  wrapper.style.left = `${left}px`;
+  wrapper.style.right = "auto";
+  wrapper.classList.remove("hidden");
+}
 
 function setStatus(message: string) {
   statusMsgEl.textContent = message;
@@ -283,7 +546,13 @@ function setFilePath(path: string | null) {
   currentPath = path;
   const label = path ? path.split(/[/\\]/).pop() ?? path : "Untitled";
   filePathEl.textContent = path ?? "Untitled";
-  document.title = path ? `Ease MD 鈥?${label}` : "Ease MD";
+  const title = path ? `${label} - Ease MD` : "Untitled - Ease MD";
+  document.title = title;
+  try {
+    void appWindow.setTitle(title);
+  } catch {
+    // ignore if unavailable
+  }
 }
 
 function setFolder(path: string | null) {
@@ -312,6 +581,7 @@ type TreeNode = {
   path: string;
   children: TreeNode[];
   isFile: boolean;
+  depth?: number;
 };
 
 function toPathString(value: unknown, fallback: string) {
@@ -382,13 +652,27 @@ async function scanDirTree(basePath: string): Promise<TreeNode[]> {
   });
 }
 
-function renderTree(nodes: TreeNode[], container: HTMLElement) {
+function renderTree(
+  nodes: TreeNode[],
+  container: HTMLElement,
+  depth = 0,
+  rootPath: string | null = null
+) {
+  const isRootLevel = depth === 0;
+  const isSecondLevelOrDeeper = depth >= 2;
   const list = document.createElement("ul");
   list.className = "folder-tree";
+  if (isSecondLevelOrDeeper) {
+    list.classList.add("collapsed");
+  }
   nodes.forEach((node) => {
     const item = document.createElement("li");
     const row = document.createElement("div");
     row.className = `node ${node.isFile ? "file" : "folder"}`;
+    if (!node.isFile) {
+      row.classList.add("collapsible");
+      row.dataset.state = isSecondLevelOrDeeper ? "closed" : "open";
+    }
     if (currentPath && node.isFile && node.path === currentPath) {
       row.classList.add("active");
     }
@@ -397,17 +681,39 @@ function renderTree(nodes: TreeNode[], container: HTMLElement) {
     label.className = "label";
     label.textContent = node.name;
     row.appendChild(label);
+    row.addEventListener("mouseenter", () => {
+      if (!node.isFile) {
+        return;
+      }
+      if (label.scrollWidth <= label.clientWidth) {
+        return;
+      }
+      scheduleHoverTooltip(label, node.name);
+    });
+    row.addEventListener("mouseleave", () => {
+      hideHoverTooltip();
+    });
     row.addEventListener("click", (event) => {
       event.stopPropagation();
+      hideHoverTooltip();
       const target = event.currentTarget as HTMLElement;
       const filePath = target.dataset.path ?? "";
-      if (node.isFile && filePath) {
+      if (!node.isFile) {
+        const nested = item.querySelector(":scope > ul.folder-tree") as HTMLElement | null;
+        if (nested) {
+          const isOpen = !nested.classList.contains("collapsed");
+          nested.classList.toggle("collapsed", isOpen);
+          row.dataset.state = isOpen ? "closed" : "open";
+        }
+        return;
+      }
+      if (filePath) {
         void openPath(filePath, { updateFolder: false });
       }
     });
     item.appendChild(row);
     if (node.children.length > 0) {
-      renderTree(node.children, item);
+      renderTree(node.children, item, depth + 1, rootPath ?? null);
     }
     list.appendChild(item);
   });
@@ -457,7 +763,7 @@ async function refreshFolderFiles() {
       folderListEl.appendChild(empty);
       return;
     }
-    renderTree([rootNode], folderListEl);
+    renderTree([rootNode], folderListEl, 0, currentFolder);
   } catch (error) {
     console.error(error);
     const failed = document.createElement("li");
@@ -478,7 +784,8 @@ function setMarkdown(markdown: string) {
   if (!editor) {
     return;
   }
-  const html = decorateImages(md.render(markdown));
+  const normalized = markdown.replace(/\t/g, "  ");
+  const html = preserveLeadingWhitespace(decorateImages(md.render(normalized)));
   editor.commands.setContent(html, false);
 }
 
@@ -536,13 +843,9 @@ function updateOutline() {
       item.dataset.line = String(heading.line);
     }
     item.style.paddingLeft = `${Math.max(0, heading.level - 1) * 12}px`;
-    const depth = document.createElement("span");
-    depth.className = "outline-depth";
-    depth.textContent = `H${heading.level}`;
     const text = document.createElement("span");
     text.className = "outline-text";
     text.textContent = heading.text;
-    item.appendChild(depth);
     item.appendChild(text);
     item.addEventListener("click", () => {
       if (isSourceMode) {
@@ -630,7 +933,10 @@ function loadRecent(): string[] {
   }
   try {
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return Array.from(new Set(parsed));
   } catch {
     return [];
   }
@@ -719,6 +1025,26 @@ async function maybeConfirmLoseChanges(): Promise<boolean> {
   return window.confirm("You have unsaved changes. Continue?");
 }
 
+async function maybeSaveBeforeLeave(): Promise<boolean> {
+  if (!isDirty) {
+    return true;
+  }
+  let shouldSave = false;
+  try {
+    shouldSave = await confirm("Current document has unsaved changes. Save before leaving?", {
+      title: "Ease MD",
+      kind: "warning"
+    });
+  } catch (error) {
+    console.error("dialog confirm failed, fallback to browser confirm", error);
+    shouldSave = window.confirm("Current document has unsaved changes. Save before leaving?");
+  }
+  if (!shouldSave) {
+    return true;
+  }
+  return saveFile();
+}
+
 async function maybeRestoreDraft(path: string | null, currentText: string) {
   const draft = getDraft(path);
   if (!draft || draft.text.trim().length === 0) {
@@ -743,14 +1069,19 @@ function setEditorContent(text: string) {
   sourceEditor.value = text;
   updateWordCount();
   updateOutline();
+  updateCodeLanguagePicker();
 }
 
 async function openPath(
   path: string,
-  options: { updateFolder?: boolean } = {}
+  options: { updateFolder?: boolean; checkDirty?: boolean } = {}
 ) {
   const updateFolder = options.updateFolder ?? false;
+  const checkDirty = options.checkDirty ?? true;
   try {
+    if (checkDirty && !(await maybeSaveBeforeLeave())) {
+      return;
+    }
     const pathValue = toPathString(path, "");
     if (!pathValue) {
       throw new Error("Empty path");
@@ -776,9 +1107,6 @@ async function openPath(
 }
 
 async function openFile() {
-  if (!(await maybeConfirmLoseChanges())) {
-    return;
-  }
   const result = await open({
     multiple: false,
     filters: [{ name: "Markdown", extensions: ["md", "markdown", "mdx"] }]
@@ -789,10 +1117,9 @@ async function openFile() {
   await openPath(result, { updateFolder: true });
 }
 
-async function saveFile() {
+async function saveFile(): Promise<boolean> {
   if (!currentPath) {
-    await saveFileAs();
-    return;
+    return saveFileAs();
   }
   try {
     const content = isSourceMode ? sourceEditor.value : getMarkdown();
@@ -807,18 +1134,20 @@ async function saveFile() {
     setDirtyFlag();
     clearDraft(currentPath);
     setStatus("Saved");
+    return true;
   } catch (error) {
     console.error(error);
     setStatus("Failed to save");
+    return false;
   }
 }
 
-async function saveFileAs() {
+async function saveFileAs(): Promise<boolean> {
   const path = await save({
     filters: [{ name: "Markdown", extensions: ["md", "markdown", "mdx"] }]
   });
   if (!path) {
-    return;
+    return false;
   }
   try {
     const content = isSourceMode ? sourceEditor.value : getMarkdown();
@@ -831,9 +1160,11 @@ async function saveFileAs() {
     setDirtyFlag();
     clearDraft(path);
     setStatus("Saved");
+    return true;
   } catch (error) {
     console.error(error);
     setStatus("Failed to save");
+    return false;
   }
 }
 
@@ -846,7 +1177,7 @@ function newFile() {
 }
 
 async function newFileWithPrompt() {
-  if (!(await maybeConfirmLoseChanges())) {
+  if (!(await maybeSaveBeforeLeave())) {
     return;
   }
   newFile();
@@ -858,11 +1189,13 @@ function setSourceMode(enabled: boolean) {
   editorHost.classList.toggle("hidden", enabled);
   sourceEditor.classList.toggle("hidden", !enabled);
   if (enabled) {
+    hideCodeLanguagePicker();
     sourceEditor.value = getMarkdown();
     sourceEditor.focus();
   } else {
     setMarkdown(sourceEditor.value);
     editor?.commands.focus();
+    updateCodeLanguagePicker();
   }
   updateWordCount();
   updateOutline();
@@ -905,6 +1238,20 @@ function initSidebarWidth() {
   if (Number.isFinite(stored) && stored > 0) {
     applySidebarWidth(stored);
   }
+}
+
+function setSidebarCollapsed(collapsed: boolean) {
+  document.body.classList.toggle("sidebar-collapsed", collapsed);
+  localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? "1" : "0");
+  if (sidebarToggleBtn) {
+    sidebarToggleBtn.textContent = collapsed ? "⟩" : "⟨";
+    sidebarToggleBtn.title = collapsed ? "Expand sidebar" : "Collapse sidebar";
+  }
+}
+
+function toggleSidebarCollapsed() {
+  const collapsed = document.body.classList.contains("sidebar-collapsed");
+  setSidebarCollapsed(!collapsed);
 }
 
 function getResizeGuide() {
@@ -971,13 +1318,122 @@ async function resolveImageTarget(ext: string) {
 }
 
 function openContextMenu(x: number, y: number) {
-  contextMenu.style.left = `${x}px`;
-  contextMenu.style.top = `${y}px`;
   contextMenu.classList.remove("hidden");
+  const rect = contextMenu.getBoundingClientRect();
+  const maxX = window.innerWidth - rect.width - 8;
+  const maxY = window.innerHeight - rect.height - 8;
+  const nextX = Math.max(8, Math.min(x, maxX));
+  const nextY = Math.max(8, Math.min(y, maxY));
+  contextMenu.style.left = `${nextX}px`;
+  contextMenu.style.top = `${nextY}px`;
 }
 
 function closeContextMenu() {
   contextMenu.classList.add("hidden");
+  contextMenu.style.left = "-9999px";
+  contextMenu.style.top = "-9999px";
+}
+
+function getImageContext(target: HTMLElement | null) {
+  if (!editor || !target) {
+    return null;
+  }
+  const img = target.closest(".image-node img") as HTMLImageElement | null;
+  if (!img) {
+    return null;
+  }
+  const pos = editor.view.posAtDOM(img, 0);
+  const resolved = editor.state.doc.resolve(pos);
+  let node = resolved.nodeAfter;
+  let nodePos = resolved.pos;
+  if (!node || node.type.name !== "image") {
+    node = resolved.nodeBefore;
+    nodePos = resolved.pos - (node?.nodeSize ?? 0);
+  }
+  if (!node || node.type.name !== "image") {
+    return null;
+  }
+  const raw = (node.attrs.original ?? node.attrs.src ?? "") as string;
+  return {
+    pos: nodePos,
+    raw,
+    path: raw ? resolveImageFilePath(raw) : null
+  };
+}
+
+function resolveImageFilePath(raw: string) {
+  const normalized = raw.replace(/\\/g, "/");
+  if (!normalized || /^(https?:|data:|blob:)/i.test(normalized)) {
+    return null;
+  }
+  if (/^tauri:\/\//i.test(normalized) || /^asset:\/\//i.test(normalized)) {
+    return null;
+  }
+  if (/^[a-zA-Z]:\//.test(normalized) || normalized.startsWith("/")) {
+    return normalized;
+  }
+  if (!currentPath) {
+    return null;
+  }
+  return join(dirname(currentPath), normalized);
+}
+
+function renderContextMenu(items: { label?: string; action?: string; separator?: boolean }[]) {
+  contextMenu.innerHTML = "";
+  items.forEach((item) => {
+    if (item.separator) {
+      const sep = document.createElement("div");
+      sep.className = "menu-separator";
+      contextMenu.appendChild(sep);
+      return;
+    }
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = item.label ?? "";
+    if (item.action) {
+      button.dataset.action = item.action;
+    }
+    contextMenu.appendChild(button);
+  });
+}
+
+function buildContextMenuItems() {
+  if (currentContext.type === "image") {
+    return [
+      { label: "Copy Image Markdown", action: "image_copy_markdown" },
+      { label: "Copy Image Path", action: "image_copy_path" },
+      { label: "Delete Image File", action: "image_delete" },
+      { separator: true },
+      { label: "Heading 1", action: "heading1" },
+      { label: "Heading 2", action: "heading2" },
+      { label: "Heading 3", action: "heading3" },
+      { label: "Bold", action: "bold" },
+      { label: "Italic", action: "italic" },
+      { label: "Quote", action: "blockquote" },
+      { label: "Code Block", action: "codeblock" },
+      { label: "Table", action: "table" },
+      { label: "Divider", action: "hr" },
+      { label: "Bullet List", action: "bullet" },
+      { label: "Ordered List", action: "ordered" },
+      { label: "Link", action: "link" },
+      { label: "Image", action: "image" }
+    ];
+  }
+  return [
+    { label: "Heading 1", action: "heading1" },
+    { label: "Heading 2", action: "heading2" },
+    { label: "Heading 3", action: "heading3" },
+    { label: "Bold", action: "bold" },
+    { label: "Italic", action: "italic" },
+    { label: "Quote", action: "blockquote" },
+    { label: "Code Block", action: "codeblock" },
+    { label: "Table", action: "table" },
+    { label: "Divider", action: "hr" },
+    { label: "Bullet List", action: "bullet" },
+    { label: "Ordered List", action: "ordered" },
+    { label: "Link", action: "link" },
+    { label: "Image", action: "image" }
+  ];
 }
 
 async function handleContextAction(action: string) {
@@ -986,6 +1442,45 @@ async function handleContextAction(action: string) {
   }
   const chain = editor.chain().focus();
   switch (action) {
+    case "image_copy_markdown": {
+      if (!currentContext.imageRaw) {
+        break;
+      }
+      const markdown = formatImageMarkdown(currentContext.imageRaw, "");
+      await navigator.clipboard.writeText(markdown);
+      setStatus("Image markdown copied");
+      break;
+    }
+    case "image_copy_path": {
+      if (!currentContext.imageRaw) {
+        break;
+      }
+      await navigator.clipboard.writeText(currentContext.imageRaw);
+      setStatus("Image path copied");
+      break;
+    }
+    case "image_delete": {
+      if (!currentContext.imagePos) {
+        break;
+      }
+      const confirmed = window.confirm("Delete image file?");
+      if (!confirmed) {
+        break;
+      }
+      try {
+        if (currentContext.imagePath) {
+          await remove(currentContext.imagePath);
+        }
+        const pos = currentContext.imagePos;
+        editor.commands.setNodeSelection(pos);
+        editor.commands.deleteSelection();
+        setStatus("Image deleted");
+      } catch (error) {
+        console.error(error);
+        setStatus("Failed to delete image");
+      }
+      break;
+    }
     case "heading1":
       chain.toggleHeading({ level: 1 }).run();
       break;
@@ -1006,6 +1501,7 @@ async function handleContextAction(action: string) {
       break;
     case "codeblock":
       chain.toggleCodeBlock().run();
+      updateCodeLanguagePicker();
       break;
     case "table":
       chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
@@ -1144,7 +1640,8 @@ function initEditor() {
   editor = new Editor({
     element: editorHost,
     extensions: [
-      StarterKit,
+      StarterKit.configure({ codeBlock: false }),
+      CodeBlockLowlight.configure({ lowlight }),
       Link.configure({ openOnClick: false, autolink: true, linkOnPaste: true }),
       ImageWithMarkdown,
       Table.configure({ resizable: true }),
@@ -1160,6 +1657,18 @@ function initEditor() {
       scheduleDraftSave();
       scheduleOutline();
       highlightOutlineByScroll();
+      updateCodeLanguagePicker();
+    },
+    onSelectionUpdate: () => {
+      updateCodeLanguagePicker();
+    },
+    onFocus: () => {
+      updateCodeLanguagePicker();
+    },
+    onBlur: () => {
+      if (!isCodeLanguageInteracting) {
+        updateCodeLanguagePicker();
+      }
     }
   });
 }
@@ -1170,6 +1679,10 @@ toggleSourceBtn.addEventListener("click", () => {
 
 themeBtn.addEventListener("click", () => {
   toggleTheme();
+});
+
+sidebarToggleBtn.addEventListener("click", () => {
+  toggleSidebarCollapsed();
 });
 
 filesTab.addEventListener("click", () => setSidebarTab("files"));
@@ -1221,9 +1734,26 @@ sourceEditor.addEventListener("input", () => {
 });
 
 sourceEditor.addEventListener("scroll", () => hideImageMeta());
+folderListEl.addEventListener("scroll", () => hideHoverTooltip());
+window.addEventListener("blur", () => hideHoverTooltip());
 
 editorHost.addEventListener("contextmenu", (event) => {
   event.preventDefault();
+  const imageContext = getImageContext(event.target as HTMLElement | null);
+  if (imageContext) {
+    currentContext = {
+      type: "image",
+      imagePath: imageContext.path ?? undefined,
+      imageRaw: imageContext.raw ?? undefined,
+      imagePos: imageContext.pos ?? undefined
+    };
+    if (typeof imageContext.pos === "number") {
+      editor?.commands.setNodeSelection(imageContext.pos);
+    }
+  } else {
+    currentContext = { type: "text" };
+  }
+  renderContextMenu(buildContextMenuItems());
   openContextMenu(event.clientX, event.clientY);
 });
 
@@ -1237,10 +1767,46 @@ contextMenu.addEventListener("click", async (event) => {
   await handleContextAction(action);
 });
 
-  window.addEventListener("click", () => closeContextMenu());
+  document.addEventListener("pointerdown", (event) => {
+    const target = event.target as HTMLElement | null;
+    if (target && contextMenu.contains(target)) {
+      return;
+    }
+    closeContextMenu();
+  });
+  window.addEventListener(
+    "scroll",
+    (event) => {
+      const target = event.target as HTMLElement | null;
+      if (target && contextMenu.contains(target)) {
+        return;
+      }
+      closeContextMenu();
+    },
+    true
+  );
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeContextMenu();
+    }
+  });
   window.addEventListener("blur", () => closeContextMenu());
-  editorHost.addEventListener("scroll", () => hideImageMeta());
-  editorHost.addEventListener("scroll", () => highlightOutlineByScroll());
+  editorHost.addEventListener("scroll", () => {
+    hideImageMeta();
+    highlightOutlineByScroll();
+    updateCodeLanguagePicker();
+  });
+  window.addEventListener("resize", () => updateCodeLanguagePicker());
+  window.addEventListener("click", (event) => {
+    if (!codeLanguagePickerEl) {
+      return;
+    }
+    const target = event.target as HTMLElement | null;
+    if (target && codeLanguagePickerEl.contains(target)) {
+      return;
+    }
+    updateCodeLanguagePicker();
+  });
 
 function shouldHandleShortcut(event: KeyboardEvent) {
   const target = event.target as HTMLElement | null;
@@ -1283,6 +1849,7 @@ function handleShortcut(event: KeyboardEvent) {
       event.preventDefault();
       if (shift) {
         editor.chain().focus().toggleCodeBlock().run();
+        updateCodeLanguagePicker();
       } else {
         const url = window.prompt("Link URL");
         if (url) {
@@ -1378,6 +1945,7 @@ function initApp() {
   setStatus("JS loaded");
   initEditor();
   initSidebarWidth();
+  setSidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
   renderRecent();
   syncRecentMenu(loadRecent());
   updateOutline();

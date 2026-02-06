@@ -10,23 +10,25 @@
     <div id="app" class="split-view">
       <div class="layout">
         <aside class="sidebar">
-          <div class="sidebar-tabs">
-            <button id="filesTab" class="tab active">Files</button>
-            <button id="outlineTab" class="tab">Outline</button>
-          </div>
-          <div id="filesPane" class="sidebar-pane">
-            <div id="folderPath" class="folder-path">No folder selected.</div>
-            <ul id="folderList" class="folder-list"></ul>
-            <div id="recentPane" class="hidden">
-              <div class="sidebar-title">Recent</div>
-              <ul id="recentList" class="recent-list"></ul>
-              <div class="sidebar-hint">Tip: drag a file in later to open.</div>
+          <div class="sidebar-content">
+            <div class="sidebar-tabs">
+              <button id="filesTab" class="tab active">Files</button>
+              <button id="outlineTab" class="tab">Outline</button>
             </div>
-          </div>
-          <div id="outlinePane" class="sidebar-pane hidden">
-            <div class="sidebar-title">Outline</div>
-            <ul id="outlineList" class="outline-list"></ul>
-            <div class="sidebar-hint">Headings update as you type.</div>
+            <div id="filesPane" class="sidebar-pane">
+              <div id="folderPath" class="folder-path">No folder selected.</div>
+              <ul id="folderList" class="folder-list"></ul>
+              <div id="recentPane" class="hidden">
+                <div class="sidebar-title">Recent</div>
+                <ul id="recentList" class="recent-list"></ul>
+                <div class="sidebar-hint">Tip: drag a file in later to open.</div>
+              </div>
+            </div>
+            <div id="outlinePane" class="sidebar-pane hidden">
+              <div class="sidebar-title">Outline</div>
+              <ul id="outlineList" class="outline-list"></ul>
+              <div class="sidebar-hint">Headings update as you type.</div>
+            </div>
           </div>
         </aside>
         <div id="sidebarResizer" class="sidebar-resizer" title="Resize sidebar"></div>
@@ -39,6 +41,9 @@
         <div class="footer-left">
           <div id="filePath" class="file-path">Untitled</div>
           <span id="statusMsg" class="status-msg">Ready</span>
+          <button id="sidebarToggleBtn" class="sidebar-toggle" title="Collapse sidebar" aria-label="Collapse sidebar">
+            ⟨
+          </button>
         </div>
         <div class="meta">
           <span id="wordCount">0 words</span>
@@ -53,21 +58,7 @@
       </footer>
     </div>
 
-    <div id="contextMenu" class="context-menu hidden">
-      <button data-action="heading1">Heading 1</button>
-      <button data-action="heading2">Heading 2</button>
-      <button data-action="heading3">Heading 3</button>
-      <button data-action="bold">Bold</button>
-      <button data-action="italic">Italic</button>
-      <button data-action="blockquote">Quote</button>
-      <button data-action="codeblock">Code Block</button>
-      <button data-action="table">Table</button>
-      <button data-action="hr">Divider</button>
-      <button data-action="bullet">Bullet List</button>
-      <button data-action="ordered">Ordered List</button>
-      <button data-action="link">Link</button>
-      <button data-action="image">Image</button>
-    </div>
+    <div id="contextMenu" class="context-menu hidden"></div>
 
     <script type="module" src="./main.js"></script>
   </body>
