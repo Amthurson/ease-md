@@ -62,12 +62,59 @@ fn set_recent_menu(app: tauri::AppHandle, recents: Vec<String>) -> Result<(), St
     Ok(())
 }
 
+#[tauri::command]
+fn reveal_in_folder(path: String) -> Result<(), String> {
+    let target = Path::new(&path);
+    if !target.exists() {
+        return Err("Path does not exist".into());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let mut cmd = std::process::Command::new("explorer");
+        if target.is_dir() {
+            cmd.arg(target);
+        } else {
+            let select_arg = format!("/select,{}", target.display());
+            cmd.arg(select_arg);
+        }
+        cmd.spawn().map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let mut cmd = std::process::Command::new("open");
+        if target.is_dir() {
+            cmd.arg(target);
+        } else {
+            cmd.arg("-R").arg(target);
+        }
+        cmd.spawn().map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let mut cmd = std::process::Command::new("xdg-open");
+        if target.is_dir() {
+            cmd.arg(target);
+        } else if let Some(parent) = target.parent() {
+            cmd.arg(parent);
+        } else {
+            cmd.arg(target);
+        }
+        cmd.spawn().map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .manage(RecentState(Mutex::new(Vec::new())))
-        .invoke_handler(tauri::generate_handler![set_recent_menu])
+        .invoke_handler(tauri::generate_handler![set_recent_menu, reveal_in_folder])
         .setup(|app| {
             let dist_index = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("..")

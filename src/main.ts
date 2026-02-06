@@ -23,11 +23,13 @@ import {
   mkdir,
   exists,
   readDir,
-  remove
+  remove,
+  rename
 } from "@tauri-apps/plugin-fs";
 import { dirname, join, extname, pictureDir } from "@tauri-apps/api/path";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { listen } from "@tauri-apps/api/event";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { emitTo, listen } from "@tauri-apps/api/event";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 
 const editorHost = document.querySelector<HTMLDivElement>("#editor")!;
@@ -324,6 +326,7 @@ const ImageWithMarkdown = Image.extend({
 const RECENT_KEY = "ease-md:recent-files";
 const DRAFT_KEY = "ease-md:draft";
 const THEME_KEY = "ease-md:theme";
+const CREATED_DIRS_KEY = "ease-md:created-dirs";
 const MAX_RECENTS = 20;
 
 let editor: Editor | null = null;
@@ -341,8 +344,30 @@ let codeLanguagePickerEl: HTMLDivElement | null = null;
 let codeLanguageSelectEl: HTMLSelectElement | null = null;
 let codeLanguageInputEl: HTMLInputElement | null = null;
 let isCodeLanguageInteracting = false;
-let currentContext: { type: "text" | "image"; imagePath?: string; imageRaw?: string; imagePos?: number } =
-  { type: "text" };
+let currentContext:
+  | { type: "text" }
+  | { type: "image"; imagePath?: string; imageRaw?: string; imagePos?: number }
+  | { type: "tree"; targetPath: string; isFile: boolean } = { type: "text" };
+let filesViewMode: "tree" | "list" = "tree";
+let createdDirs = new Set<string>();
+
+function loadCreatedDirs() {
+  const raw = localStorage.getItem(CREATED_DIRS_KEY);
+  if (!raw) {
+    return new Set<string>();
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return new Set(parsed.filter((item) => typeof item === "string"));
+    }
+  } catch {}
+  return new Set<string>();
+}
+
+function saveCreatedDirs() {
+  localStorage.setItem(CREATED_DIRS_KEY, JSON.stringify(Array.from(createdDirs)));
+}
 
 function ensureHoverTooltip() {
   if (hoverTooltip) {
@@ -537,6 +562,21 @@ function setStatus(message: string) {
   statusMsgEl.textContent = message;
 }
 
+function openInNewWindow(path: string) {
+  const label = `viewer-${Date.now()}`;
+  const encoded = encodeURIComponent(path);
+  const win = new WebviewWindow(label, {
+    url: `tauri://localhost/index.html?open=${encoded}`,
+    title: "Ease MD",
+    width: 960,
+    height: 640
+  });
+  win.once("tauri://error", (event) => {
+    console.error("new window error", event);
+    setStatus("Failed to open new window");
+  });
+}
+
 function setDirtyFlag() {
   dirtyFlagEl.textContent = isDirty ? "Unsaved" : "Saved";
   dirtyFlagEl.style.color = isDirty ? "var(--accent-strong)" : "var(--muted)";
@@ -621,7 +661,7 @@ async function scanDirTree(basePath: string): Promise<TreeNode[]> {
       } catch (error) {
         console.error("scanDirTree child failed", entryPath, error);
       }
-      if (children.length > 0) {
+      if (children.length > 0 || createdDirs.has(entryPath)) {
         nodes.push({
           name,
           path: entryPath,
@@ -650,6 +690,37 @@ async function scanDirTree(basePath: string): Promise<TreeNode[]> {
     }
     return a.name.localeCompare(b.name);
   });
+}
+
+async function scanMarkdownFiles(basePath: string): Promise<TreeNode[]> {
+  const entries = await readDir(basePath, { recursive: true });
+  const nodes: TreeNode[] = [];
+  const walk = (items: any[], base: string) => {
+    items.forEach((entry) => {
+      const rawPath = toPathString(entry?.path, "");
+      const name = entry?.name ?? normalizeName(rawPath || base);
+      const fallbackPath = rawPath || `${base.replace(/[/\\]+$/, "")}/${name}`;
+      const entryPath = toPathString(entry?.path, fallbackPath);
+      const isDir = entry?.isDirectory === true || Array.isArray(entry?.children);
+      if (isDir) {
+        if (entry?.children) {
+          walk(entry.children, entryPath);
+        }
+        return;
+      }
+      if (!isMarkdownFile(name)) {
+        return;
+      }
+      nodes.push({
+        name,
+        path: entryPath,
+        isFile: true,
+        children: []
+      });
+    });
+  };
+  walk(entries, basePath);
+  return nodes.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function renderTree(
@@ -739,6 +810,21 @@ function updateTreeActive(path: string | null) {
   }
 }
 
+function scrollTreeToPath(path: string | null) {
+  if (!path) {
+    return;
+  }
+  const escaped = typeof (window as any).CSS?.escape === "function"
+    ? (window as any).CSS.escape(path)
+    : path.replace(/"/g, '\\"');
+  const target = folderListEl.querySelector(
+    `.folder-tree .node[data-path="${escaped}"]`
+  ) as HTMLElement | null;
+  if (target) {
+    target.scrollIntoView({ block: "nearest" });
+  }
+}
+
 async function refreshFolderFiles() {
   folderListEl.innerHTML = "";
   if (!currentFolder) {
@@ -749,6 +835,19 @@ async function refreshFolderFiles() {
     return;
   }
   try {
+    if (filesViewMode === "list") {
+      const files = await scanMarkdownFiles(currentFolder);
+      if (files.length === 0) {
+        const empty = document.createElement("li");
+        empty.textContent = "No markdown files.";
+        empty.style.opacity = "0.6";
+        folderListEl.appendChild(empty);
+        return;
+      }
+      renderTree(files, folderListEl, 1, currentFolder);
+      return;
+    }
+
     const tree = await scanDirTree(currentFolder);
     const rootNode: TreeNode = {
       name: normalizeName(currentFolder),
@@ -1419,6 +1518,34 @@ function buildContextMenuItems() {
       { label: "Image", action: "image" }
     ];
   }
+  if (currentContext.type === "tree") {
+    const isFile = currentContext.isFile;
+    const listLabel = `${filesViewMode === "list" ? "✓ " : ""}Document List`;
+    const treeLabel = `${filesViewMode === "tree" ? "✓ " : ""}Document Tree`;
+    return [
+      ...(isFile
+        ? [
+            { label: "Open", action: "tree_open" },
+            { label: "Open in New Window", action: "tree_open_new" },
+            { separator: true }
+          ]
+        : []),
+      { label: "New File", action: "tree_new_file" },
+      { label: "New Folder", action: "tree_new_folder" },
+      { separator: true },
+      { label: "Search", action: "tree_search" },
+      { separator: true },
+      { label: listLabel, action: "tree_view_list" },
+      { label: treeLabel, action: "tree_view_tree" },
+      { separator: true },
+      { label: "Rename", action: "tree_rename" },
+      { label: "Delete", action: "tree_delete" },
+      { separator: true },
+      { label: "Properties", action: "tree_props" },
+      { label: "Copy Path", action: "tree_copy_path" },
+      { label: "Open File Location", action: "tree_open_location" }
+    ];
+  }
   return [
     { label: "Heading 1", action: "heading1" },
     { label: "Heading 2", action: "heading2" },
@@ -1478,6 +1605,127 @@ async function handleContextAction(action: string) {
       } catch (error) {
         console.error(error);
         setStatus("Failed to delete image");
+      }
+      break;
+    }
+    case "tree_open": {
+      if (currentContext.type === "tree" && currentContext.isFile) {
+        await openPath(currentContext.targetPath, { updateFolder: false });
+      }
+      break;
+    }
+    case "tree_open_new": {
+      if (currentContext.type === "tree" && currentContext.isFile) {
+        openInNewWindow(currentContext.targetPath);
+      }
+      break;
+    }
+    case "tree_new_file": {
+      if (currentContext.type !== "tree") {
+        break;
+      }
+      const baseDir = currentContext.isFile
+        ? await dirname(currentContext.targetPath)
+        : currentContext.targetPath;
+      const name = window.prompt("New file name");
+      if (!name) {
+        break;
+      }
+      const newPath = await join(baseDir, name.endsWith(".md") ? name : `${name}.md`);
+      await writeTextFile(newPath, "");
+      await refreshFolderFiles();
+      scrollTreeToPath(newPath);
+      break;
+    }
+    case "tree_new_folder": {
+      if (currentContext.type !== "tree") {
+        break;
+      }
+      const baseDir = currentContext.isFile
+        ? await dirname(currentContext.targetPath)
+        : currentContext.targetPath;
+      const name = window.prompt("New folder name");
+      if (!name) {
+        break;
+      }
+      const newPath = await join(baseDir, name);
+      await mkdir(newPath, { recursive: true });
+      createdDirs.add(newPath);
+      saveCreatedDirs();
+      await refreshFolderFiles();
+      scrollTreeToPath(newPath);
+      break;
+    }
+    case "tree_search": {
+      setStatus("Search is not available yet.");
+      break;
+    }
+    case "tree_view_list": {
+      filesViewMode = "list";
+      await refreshFolderFiles();
+      break;
+    }
+    case "tree_view_tree": {
+      filesViewMode = "tree";
+      await refreshFolderFiles();
+      break;
+    }
+    case "tree_rename": {
+      if (currentContext.type !== "tree") {
+        break;
+      }
+      const name = window.prompt("Rename to", normalizeName(currentContext.targetPath));
+      if (!name) {
+        break;
+      }
+      const parent = await dirname(currentContext.targetPath);
+      const nextPath = await join(parent, name);
+      await rename(currentContext.targetPath, nextPath);
+      if (!currentContext.isFile) {
+        if (createdDirs.delete(currentContext.targetPath)) {
+          createdDirs.add(nextPath);
+          saveCreatedDirs();
+        }
+      }
+      await refreshFolderFiles();
+      break;
+    }
+    case "tree_delete": {
+      if (currentContext.type !== "tree") {
+        break;
+      }
+      const confirmed = window.confirm("Delete this item?");
+      if (!confirmed) {
+        break;
+      }
+      await remove(currentContext.targetPath, { recursive: !currentContext.isFile });
+      if (!currentContext.isFile) {
+        if (createdDirs.delete(currentContext.targetPath)) {
+          saveCreatedDirs();
+        }
+      }
+      await refreshFolderFiles();
+      break;
+    }
+    case "tree_props": {
+      setStatus("Properties are not available yet.");
+      break;
+    }
+    case "tree_copy_path": {
+      if (currentContext.type === "tree") {
+        await navigator.clipboard.writeText(currentContext.targetPath);
+        setStatus("Path copied");
+      }
+      break;
+    }
+    case "tree_open_location": {
+      if (currentContext.type === "tree") {
+        try {
+          await invoke("reveal_in_folder", { path: currentContext.targetPath });
+        } catch (error) {
+          console.error(error);
+          setStatus("Failed to open location");
+        }
       }
       break;
     }
@@ -1611,6 +1859,12 @@ async function setupWindowHandlers() {
   await listen<string>("menu:open-recent", async (event) => {
     if (event.payload) {
       await openPath(event.payload);
+    }
+  });
+
+  await listen<string>("open-path", async (event) => {
+    if (event.payload) {
+      await openPath(event.payload, { updateFolder: false, checkDirty: false });
     }
   });
 
@@ -1752,6 +2006,29 @@ editorHost.addEventListener("contextmenu", (event) => {
     }
   } else {
     currentContext = { type: "text" };
+  }
+  renderContextMenu(buildContextMenuItems());
+  openContextMenu(event.clientX, event.clientY);
+});
+
+folderListEl.addEventListener("contextmenu", (event) => {
+  event.preventDefault();
+  const target = event.target as HTMLElement | null;
+  const row = target?.closest(".node") as HTMLElement | null;
+  if (row?.dataset?.path) {
+    currentContext = {
+      type: "tree",
+      targetPath: row.dataset.path,
+      isFile: row.classList.contains("file")
+    };
+  } else if (currentFolder) {
+    currentContext = {
+      type: "tree",
+      targetPath: currentFolder,
+      isFile: false
+    };
+  } else {
+    return;
   }
   renderContextMenu(buildContextMenuItems());
   openContextMenu(event.clientX, event.clientY);
@@ -1946,12 +2223,23 @@ function initApp() {
   initEditor();
   initSidebarWidth();
   setSidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
+  createdDirs = loadCreatedDirs();
   renderRecent();
   syncRecentMenu(loadRecent());
   updateOutline();
   updateWordCount();
   setDirtyFlag();
   initTheme();
+  try {
+    const url = new URL(window.location.href);
+    const openPathParam = url.searchParams.get("open");
+    if (openPathParam) {
+      const decoded = decodeURIComponent(openPathParam);
+      void openPath(decoded, { updateFolder: false, checkDirty: false });
+      url.searchParams.delete("open");
+      window.history.replaceState({}, "", url.toString());
+    }
+  } catch {}
   void setupWindowHandlers();
 }
 

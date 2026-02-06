@@ -682,7 +682,7 @@ button.small {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 20px;
+  padding: 8px 16px;
   background: var(--panel-strong);
   border-radius: 0;
   border: 0;
@@ -709,6 +709,16 @@ button.small {
   display: inline-flex;
   gap: 8px;
   align-items: center;
+}
+
+.footer .ghost.small,
+.footer .icon-btn,
+.footer .sidebar-toggle {
+  padding: 4px 10px;
+  height: 28px;
+  min-width: 28px;
+  font-size: 12px;
+  border-radius: 10px;
 }
 
 .hidden {
