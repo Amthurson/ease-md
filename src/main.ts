@@ -326,7 +326,6 @@ const ImageWithMarkdown = Image.extend({
 const RECENT_KEY = "ease-md:recent-files";
 const DRAFT_KEY = "ease-md:draft";
 const THEME_KEY = "ease-md:theme";
-const CREATED_DIRS_KEY = "ease-md:created-dirs";
 const MAX_RECENTS = 20;
 
 let editor: Editor | null = null;
@@ -341,7 +340,7 @@ let allowClose = false;
 let hoverTimer: number | null = null;
 let hoverTooltip: HTMLDivElement | null = null;
 let codeLanguagePickerEl: HTMLDivElement | null = null;
-let codeLanguageSelectEl: HTMLSelectElement | null = null;
+let codeLanguageListEl: HTMLUListElement | null = null;
 let codeLanguageInputEl: HTMLInputElement | null = null;
 let isCodeLanguageInteracting = false;
 let currentContext:
@@ -351,22 +350,8 @@ let currentContext:
 let filesViewMode: "tree" | "list" = "tree";
 let createdDirs = new Set<string>();
 
-function loadCreatedDirs() {
-  const raw = localStorage.getItem(CREATED_DIRS_KEY);
-  if (!raw) {
-    return new Set<string>();
-  }
-  try {
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      return new Set(parsed.filter((item) => typeof item === "string"));
-    }
-  } catch {}
-  return new Set<string>();
-}
-
-function saveCreatedDirs() {
-  localStorage.setItem(CREATED_DIRS_KEY, JSON.stringify(Array.from(createdDirs)));
+function normalizeFsPath(pathValue: string) {
+  return pathValue.replace(/\\/g, "/").toLowerCase();
 }
 
 function ensureHoverTooltip() {
@@ -412,10 +397,10 @@ function normalizeCodeLanguage(value: unknown) {
 }
 
 function ensureCodeLanguagePicker() {
-  if (codeLanguagePickerEl && codeLanguageSelectEl && codeLanguageInputEl) {
+  if (codeLanguagePickerEl && codeLanguageListEl && codeLanguageInputEl) {
     return {
       wrapper: codeLanguagePickerEl,
-      select: codeLanguageSelectEl,
+      list: codeLanguageListEl,
       input: codeLanguageInputEl
     };
   }
@@ -440,61 +425,71 @@ function ensureCodeLanguagePicker() {
   const input = document.createElement("input");
   input.className = "code-language-input";
   input.type = "text";
-  input.placeholder = "Type to filter...";
+  input.placeholder = "Select language";
+  input.autocomplete = "off";
 
-  const select = document.createElement("select");
-  select.className = "code-language-select";
+  const list = document.createElement("ul");
+  list.className = "code-language-list";
+
   const refreshOptions = (query = "") => {
     const normalized = query.trim().toLowerCase();
-    select.innerHTML = "";
+    list.innerHTML = "";
     CODE_LANGUAGES.filter((lang) =>
       normalized ? lang.includes(normalized) : true
     ).forEach((language) => {
-      const option = document.createElement("option");
-      option.value = language;
+      const option = document.createElement("li");
+      option.className = "code-language-option";
       option.textContent = language;
-      select.appendChild(option);
+      option.dataset.value = language;
+      list.appendChild(option);
     });
   };
   refreshOptions();
 
   input.addEventListener("input", () => {
     refreshOptions(input.value);
+    wrapper.classList.add("open");
+  });
+
+  input.addEventListener("focus", () => {
+    refreshOptions(input.value);
+    wrapper.classList.add("open");
   });
 
   input.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
-      if (select.options.length > 0) {
-        select.selectedIndex = 0;
-        select.dispatchEvent(new Event("change", { bubbles: true }));
+      const first = list.querySelector<HTMLLIElement>(".code-language-option");
+      if (first?.dataset?.value) {
+        applyCodeLanguage(first.dataset.value);
+        wrapper.classList.remove("open");
       }
     }
   });
 
-  select.addEventListener("change", () => {
-    if (!editor || isSourceMode) {
+  list.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+  });
+
+  list.addEventListener("click", (event) => {
+    const target = event.target as HTMLElement | null;
+    const value = target?.dataset?.value;
+    if (!value) {
       return;
     }
-    const language = normalizeCodeLanguage(select.value);
-    editor
-      .chain()
-      .focus()
-      .updateAttributes("codeBlock", {
-        language: language === "plaintext" ? null : language
-      })
-      .run();
+    applyCodeLanguage(value);
+    wrapper.classList.remove("open");
   });
 
   wrapper.appendChild(label);
   wrapper.appendChild(input);
-  wrapper.appendChild(select);
+  wrapper.appendChild(list);
   document.body.appendChild(wrapper);
 
   codeLanguagePickerEl = wrapper;
-  codeLanguageSelectEl = select;
+  codeLanguageListEl = list;
   codeLanguageInputEl = input;
-  return { wrapper, select, input };
+  return { wrapper, list, input };
 }
 
 function hideCodeLanguagePicker() {
@@ -505,6 +500,23 @@ function hideCodeLanguagePicker() {
     return;
   }
   codeLanguagePickerEl.classList.add("hidden");
+}
+
+function applyCodeLanguage(value: string) {
+  if (!editor || isSourceMode) {
+    return;
+  }
+  const language = normalizeCodeLanguage(value);
+  editor
+    .chain()
+    .focus()
+    .updateAttributes("codeBlock", {
+      language: language === "plaintext" ? null : language
+    })
+    .run();
+  if (codeLanguageInputEl) {
+    codeLanguageInputEl.value = language;
+  }
 }
 
 function getActiveCodeBlockPos() {
@@ -539,12 +551,13 @@ function updateCodeLanguagePicker() {
   }
 
   const blockRect = codeDom.getBoundingClientRect();
-  const { wrapper, select, input } = ensureCodeLanguagePicker();
-  if (select.value !== active.language) {
-    select.value = active.language;
+  const { wrapper, input } = ensureCodeLanguagePicker();
+  const isEditing = document.activeElement === input;
+  if (!isEditing && input.value !== active.language) {
+    input.value = active.language;
   }
-  if (input.value !== "" && !select.value) {
-    input.value = "";
+  if (!isEditing) {
+    wrapper.classList.remove("open");
   }
 
   wrapper.classList.remove("hidden");
@@ -556,6 +569,9 @@ function updateCodeLanguagePicker() {
   wrapper.style.left = `${left}px`;
   wrapper.style.right = "auto";
   wrapper.classList.remove("hidden");
+  if (codeLanguageListEl) {
+    codeLanguageListEl.style.minWidth = `${input.offsetWidth}px`;
+  }
 }
 
 function setStatus(message: string) {
@@ -1651,7 +1667,6 @@ async function handleContextAction(action: string) {
       const newPath = await join(baseDir, name);
       await mkdir(newPath, { recursive: true });
       createdDirs.add(newPath);
-      saveCreatedDirs();
       await refreshFolderFiles();
       scrollTreeToPath(newPath);
       break;
@@ -1684,7 +1699,6 @@ async function handleContextAction(action: string) {
       if (!currentContext.isFile) {
         if (createdDirs.delete(currentContext.targetPath)) {
           createdDirs.add(nextPath);
-          saveCreatedDirs();
         }
       }
       await refreshFolderFiles();
@@ -1700,9 +1714,7 @@ async function handleContextAction(action: string) {
       }
       await remove(currentContext.targetPath, { recursive: !currentContext.isFile });
       if (!currentContext.isFile) {
-        if (createdDirs.delete(currentContext.targetPath)) {
-          saveCreatedDirs();
-        }
+        createdDirs.delete(currentContext.targetPath);
       }
       await refreshFolderFiles();
       break;
@@ -1721,7 +1733,8 @@ async function handleContextAction(action: string) {
     case "tree_open_location": {
       if (currentContext.type === "tree") {
         try {
-          await invoke("reveal_in_folder", { path: currentContext.targetPath });
+          const path = currentContext.targetPath.replace(/\//g, "\\");
+          await invoke("reveal_in_folder", { path });
         } catch (error) {
           console.error(error);
           setStatus("Failed to open location");
@@ -2082,6 +2095,7 @@ contextMenu.addEventListener("click", async (event) => {
     if (target && codeLanguagePickerEl.contains(target)) {
       return;
     }
+    codeLanguagePickerEl.classList.remove("open");
     updateCodeLanguagePicker();
   });
 
@@ -2223,7 +2237,7 @@ function initApp() {
   initEditor();
   initSidebarWidth();
   setSidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
-  createdDirs = loadCreatedDirs();
+  createdDirs = new Set<string>();
   renderRecent();
   syncRecentMenu(loadRecent());
   updateOutline();

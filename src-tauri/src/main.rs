@@ -75,8 +75,7 @@ fn reveal_in_folder(path: String) -> Result<(), String> {
         if target.is_dir() {
             cmd.arg(target);
         } else {
-            let select_arg = format!("/select,{}", target.display());
-            cmd.arg(select_arg);
+            cmd.arg("/select,").arg(target);
         }
         cmd.spawn().map_err(|e| e.to_string())?;
         return Ok(());

@@ -657,25 +657,54 @@ button.small {
 }
 
 .code-language-input {
+  position: relative;
   border: 1px solid #3a4657;
   border-radius: 6px;
   background: #0f141a;
   color: #d6e2ff;
-  padding: 4px 6px;
+  padding: 4px 22px 4px 8px;
   font-size: 12px;
   font-family: var(--font-ui);
-  min-width: 120px;
+  min-width: 160px;
+  background-image: linear-gradient(45deg, transparent 50%, #90a4c2 50%),
+    linear-gradient(135deg, #90a4c2 50%, transparent 50%);
+  background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
 }
 
-.code-language-select {
-  border: 1px solid #3a4657;
+.code-language-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 8px;
+  min-width: 180px;
+  max-height: 220px;
+  overflow: auto;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border-radius: 10px;
+  border: 1px solid #2b3440;
+  background: rgba(12, 15, 20, 0.98);
+  box-shadow: var(--shadow);
+  display: none;
+  z-index: 2001;
+}
+
+.code-language-picker.open .code-language-list {
+  display: block;
+}
+
+.code-language-option {
+  padding: 6px 8px;
   border-radius: 6px;
-  background: #0f141a;
-  color: #d6e2ff;
-  padding: 4px 6px;
   font-size: 12px;
-  font-family: var(--font-ui);
-  min-width: 130px;
+  color: #d6e2ff;
+  cursor: pointer;
+}
+
+.code-language-option:hover {
+  background: rgba(208, 146, 91, 0.2);
 }
 
 .footer {
