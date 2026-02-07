@@ -632,6 +632,11 @@ function normalizeName(pathOrName: string) {
   return parts[parts.length - 1] ?? raw;
 }
 
+function getBaseName(pathValue: string) {
+  const parts = pathValue.replace(/\\/g, "/").split("/");
+  return parts[parts.length - 1] ?? pathValue;
+}
+
 type TreeNode = {
   name: string;
   path: string;
@@ -677,7 +682,7 @@ async function scanDirTree(basePath: string): Promise<TreeNode[]> {
       } catch (error) {
         console.error("scanDirTree child failed", entryPath, error);
       }
-      if (children.length > 0 || createdDirs.has(entryPath)) {
+      if (children.length > 0 || createdDirs.has(normalizeFsPath(entryPath))) {
         nodes.push({
           name,
           path: entryPath,
@@ -764,6 +769,7 @@ function renderTree(
       row.classList.add("active");
     }
     row.dataset.path = node.path;
+    row.dataset.type = node.isFile ? "file" : "folder";
     const label = document.createElement("span");
     label.className = "label";
     label.textContent = node.name;
@@ -798,6 +804,53 @@ function renderTree(
         void openPath(filePath, { updateFolder: false });
       }
     });
+
+    if (node.isFile) {
+      row.draggable = true;
+      row.addEventListener("dragstart", (event) => {
+        event.dataTransfer?.setData("text/plain", node.path);
+        event.dataTransfer?.setData("application/x-easemd-path", node.path);
+        event.dataTransfer?.setData("application/x-easemd-type", "file");
+        event.dataTransfer?.setDragImage(row, 10, 10);
+      });
+    } else {
+      row.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        row.classList.add("drop-target");
+      });
+      row.addEventListener("dragleave", () => {
+        row.classList.remove("drop-target");
+      });
+      row.addEventListener("drop", async (event) => {
+        event.preventDefault();
+        row.classList.remove("drop-target");
+        const source =
+          event.dataTransfer?.getData("application/x-easemd-path") ||
+          event.dataTransfer?.getData("text/plain");
+        const type =
+          event.dataTransfer?.getData("application/x-easemd-type") || "file";
+        if (!source || type !== "file") {
+          return;
+        }
+        const destDir = node.path;
+        const srcDir = await dirname(source);
+        if (normalizeFsPath(srcDir) === normalizeFsPath(destDir)) {
+          return;
+        }
+        const destPath = await join(destDir, getBaseName(source));
+        try {
+          await rename(source, destPath);
+          if (currentPath === source) {
+            setFilePath(destPath);
+          }
+          await refreshFolderFiles();
+          scrollTreeToPath(destPath);
+        } catch (error) {
+          console.error(error);
+          setStatus("Failed to move file");
+        }
+      });
+    }
     item.appendChild(row);
     if (node.children.length > 0) {
       renderTree(node.children, item, depth + 1, rootPath ?? null);
@@ -837,7 +890,24 @@ function scrollTreeToPath(path: string | null) {
     `.folder-tree .node[data-path="${escaped}"]`
   ) as HTMLElement | null;
   if (target) {
+    expandTreeToNode(target);
     target.scrollIntoView({ block: "nearest" });
+  }
+}
+
+function expandTreeToNode(node: HTMLElement) {
+  let currentLi = node.closest("li") as HTMLElement | null;
+  while (currentLi) {
+    const parentUl = currentLi.parentElement as HTMLElement | null;
+    if (parentUl?.classList.contains("folder-tree")) {
+      parentUl.classList.remove("collapsed");
+    }
+    const parentLi = parentUl?.closest("li") as HTMLElement | null;
+    const parentRow = parentLi?.querySelector(":scope > .node.folder") as HTMLElement | null;
+    if (parentRow) {
+      parentRow.dataset.state = "open";
+    }
+    currentLi = parentLi;
   }
 }
 
@@ -1640,33 +1710,47 @@ async function handleContextAction(action: string) {
       if (currentContext.type !== "tree") {
         break;
       }
+      const targetPath = currentContext.targetPath || currentFolder;
+      if (!targetPath) {
+        break;
+      }
       const baseDir = currentContext.isFile
-        ? await dirname(currentContext.targetPath)
-        : currentContext.targetPath;
+        ? await dirname(targetPath)
+        : targetPath;
       const name = window.prompt("New file name");
       if (!name) {
         break;
       }
       const newPath = await join(baseDir, name.endsWith(".md") ? name : `${name}.md`);
-      await writeTextFile(newPath, "");
-      await refreshFolderFiles();
-      scrollTreeToPath(newPath);
+      try {
+        await writeTextFile(newPath, "");
+        await refreshFolderFiles();
+        scrollTreeToPath(newPath);
+        setStatus("File created");
+      } catch (error) {
+        console.error(error);
+        setStatus("Failed to create file");
+      }
       break;
     }
     case "tree_new_folder": {
       if (currentContext.type !== "tree") {
         break;
       }
+      const targetPath = currentContext.targetPath || currentFolder;
+      if (!targetPath) {
+        break;
+      }
       const baseDir = currentContext.isFile
-        ? await dirname(currentContext.targetPath)
-        : currentContext.targetPath;
+        ? await dirname(targetPath)
+        : targetPath;
       const name = window.prompt("New folder name");
       if (!name) {
         break;
       }
       const newPath = await join(baseDir, name);
       await mkdir(newPath, { recursive: true });
-      createdDirs.add(newPath);
+      createdDirs.add(normalizeFsPath(newPath));
       await refreshFolderFiles();
       scrollTreeToPath(newPath);
       break;
@@ -1697,8 +1781,9 @@ async function handleContextAction(action: string) {
       const nextPath = await join(parent, name);
       await rename(currentContext.targetPath, nextPath);
       if (!currentContext.isFile) {
-        if (createdDirs.delete(currentContext.targetPath)) {
-          createdDirs.add(nextPath);
+        const prevKey = normalizeFsPath(currentContext.targetPath);
+        if (createdDirs.delete(prevKey)) {
+          createdDirs.add(normalizeFsPath(nextPath));
         }
       }
       await refreshFolderFiles();
@@ -1714,7 +1799,7 @@ async function handleContextAction(action: string) {
       }
       await remove(currentContext.targetPath, { recursive: !currentContext.isFile });
       if (!currentContext.isFile) {
-        createdDirs.delete(currentContext.targetPath);
+        createdDirs.delete(normalizeFsPath(currentContext.targetPath));
       }
       await refreshFolderFiles();
       break;

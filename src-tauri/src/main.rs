@@ -5,6 +5,13 @@ use std::sync::Mutex;
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::{Emitter, Manager, Runtime};
 
+#[cfg(target_os = "windows")]
+use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
+#[cfg(target_os = "windows")]
+use windows::Win32::UI::Shell::{ILCreateFromPathW, ILFree, SHOpenFolderAndSelectItems};
+#[cfg(target_os = "windows")]
+use windows::Win32::Foundation::RPC_E_CHANGED_MODE;
+
 struct RecentState(Mutex<Vec<String>>);
 
 fn build_menu<R: Runtime>(
@@ -71,13 +78,32 @@ fn reveal_in_folder(path: String) -> Result<(), String> {
 
     #[cfg(target_os = "windows")]
     {
-        let mut cmd = std::process::Command::new("explorer");
-        if target.is_dir() {
-            cmd.arg(target);
-        } else {
-            cmd.arg("/select,").arg(target);
+        let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+        unsafe {
+            let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+            let did_init = if hr.is_err() {
+                if hr == RPC_E_CHANGED_MODE {
+                    false
+                } else {
+                    return Err(format!("COM init failed: {hr:?}"));
+                }
+            } else {
+                true
+            };
+            let pidl = ILCreateFromPathW(windows::core::PCWSTR(wide.as_ptr()));
+            if pidl.is_null() {
+                if did_init {
+                    CoUninitialize();
+                }
+                return Err("Failed to create PIDL".into());
+            }
+            let result = SHOpenFolderAndSelectItems(pidl, None, 0);
+            ILFree(Some(pidl));
+            if did_init {
+                CoUninitialize();
+            }
+            result.map_err(|e| format!("Open folder failed: {e:?}"))?;
         }
-        cmd.spawn().map_err(|e| e.to_string())?;
         return Ok(());
     }
 

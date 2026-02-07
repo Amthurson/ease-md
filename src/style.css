@@ -373,6 +373,12 @@ button.small {
   background: rgba(212, 123, 63, 0.18);
 }
 
+.folder-tree .node.folder.drop-target {
+  outline: 2px solid rgba(212, 123, 63, 0.6);
+  outline-offset: 2px;
+  background: rgba(212, 123, 63, 0.12);
+}
+
 .folder-tree .node .label {
   overflow: hidden;
   text-overflow: ellipsis;
