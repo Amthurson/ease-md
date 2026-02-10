@@ -13,8 +13,26 @@
     "dialog:allow-open",
     "dialog:allow-save",
     "dialog:allow-confirm",
-    "fs:allow-exists",
-    "fs:allow-mkdir",
+    {
+      "identifier": "fs:allow-exists",
+      "allow": [
+        { "path": "$HOME/**/*" },
+        { "path": "$DOCUMENTS/**/*" },
+        { "path": "$DESKTOP/**/*" },
+        { "path": "$PICTURES/**/*" },
+        { "path": "C:/**/*" }
+      ]
+    },
+    {
+      "identifier": "fs:allow-mkdir",
+      "allow": [
+        { "path": "$HOME/**/*" },
+        { "path": "$DOCUMENTS/**/*" },
+        { "path": "$DESKTOP/**/*" },
+        { "path": "$PICTURES/**/*" },
+        { "path": "C:/**/*" }
+      ]
+    },
     {
       "identifier": "fs:allow-read-dir",
       "allow": [

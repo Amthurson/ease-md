@@ -21,7 +21,6 @@ import {
   readFile,
   writeFile,
   mkdir,
-  exists,
   readDir,
   remove,
   rename
@@ -130,6 +129,10 @@ function resolveImageForDisplay(rawSrc: string) {
   }
   if (/^tauri:\/\//i.test(normalized) || /^asset:\/\//i.test(normalized)) {
     return normalized;
+  }
+  // Absolute local paths must be converted to asset protocol in Tauri WebView.
+  if (/^[a-z]:\//i.test(normalized) || normalized.startsWith("//") || normalized.startsWith("/")) {
+    return convertFileSrc(normalized);
   }
   if (currentPath) {
     return convertFileSrc(join(dirname(currentPath), normalized));
@@ -1462,22 +1465,121 @@ async function handleDroppedFile(path: string) {
   const lower = path.toLowerCase();
   if (lower.match(/\.(png|jpe?g|gif|webp|bmp|svg)$/)) {
     const bytes = await readFile(path);
-    await insertImageBytes(bytes, extname(path));
+    await insertImageBytes(bytes, await extname(path));
     return;
   }
   await openPath(path);
 }
 
-async function insertImageBytes(bytes: Uint8Array, extension: string) {
-  const cleanExt = extension.replace(".", "") || "png";
+async function insertImageBytes(bytes: Uint8Array, extension: string | null | undefined) {
+  const cleanExt = (extension ?? "").replace(".", "") || "png";
   const { fullPath, linkPath } = await resolveImageTarget(cleanExt);
   await writeFile(fullPath, bytes);
-  editor
-    ?.chain()
-    .focus()
-    .setImage({ src: resolveImageForDisplay(linkPath), original: linkPath })
-    .run();
+  const previewSrc = bytesToDataUrl(bytes, cleanExt);
+  if (isSourceMode) {
+    const markdown = formatImageMarkdown(linkPath, `image-${Date.now()}`);
+    const start = sourceEditor.selectionStart ?? sourceEditor.value.length;
+    const end = sourceEditor.selectionEnd ?? start;
+    sourceEditor.setRangeText(`${markdown}\n`, start, end, "end");
+    isDirty = true;
+    setDirtyFlag();
+    updateWordCount();
+    scheduleDraftSave();
+    scheduleOutline();
+  } else {
+    editor
+      ?.chain()
+      .focus()
+      .setImage({ src: previewSrc, original: linkPath })
+      .run();
+  }
   setStatus("Image inserted");
+}
+
+function bytesToDataUrl(bytes: Uint8Array, extension: string) {
+  const mime = `image/${extension === "jpg" ? "jpeg" : extension}`;
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return `data:${mime};base64,${btoa(binary)}`;
+}
+
+function getExtensionFromMime(mime: string) {
+  const normalized = mime.toLowerCase();
+  if (normalized.includes("png")) return "png";
+  if (normalized.includes("jpeg") || normalized.includes("jpg")) return "jpg";
+  if (normalized.includes("gif")) return "gif";
+  if (normalized.includes("webp")) return "webp";
+  if (normalized.includes("bmp")) return "bmp";
+  if (normalized.includes("svg")) return "svg";
+  return "png";
+}
+
+async function getImageFromPasteEvent(event: ClipboardEvent) {
+  const clipboard = event.clipboardData;
+  if (!clipboard) {
+    return null;
+  }
+
+  const files = Array.from(clipboard.files ?? []);
+  for (const file of files) {
+    if (!file.type.startsWith("image/")) {
+      continue;
+    }
+    const buffer = await file.arrayBuffer();
+    return {
+      bytes: new Uint8Array(buffer),
+      extension: getExtensionFromMime(file.type)
+    };
+  }
+
+  const items = Array.from(clipboard.items ?? []);
+  for (const item of items) {
+    if (!item.type.startsWith("image/")) {
+      continue;
+    }
+    const file = item.getAsFile();
+    if (!file) {
+      continue;
+    }
+    const buffer = await file.arrayBuffer();
+    return {
+      bytes: new Uint8Array(buffer),
+      extension: getExtensionFromMime(file.type)
+    };
+  }
+
+  return null;
+}
+
+async function getImageFromClipboardApi() {
+  const read = (navigator.clipboard as Clipboard & {
+    read?: () => Promise<ClipboardItem[]>;
+  }).read;
+  if (!read) {
+    return null;
+  }
+  try {
+    const items = await read.call(navigator.clipboard);
+    for (const item of items) {
+      const imageType = item.types.find((type) => type.startsWith("image/"));
+      if (!imageType) {
+        continue;
+      }
+      const blob = await item.getType(imageType);
+      const buffer = await blob.arrayBuffer();
+      return {
+        bytes: new Uint8Array(buffer),
+        extension: getExtensionFromMime(imageType)
+      };
+    }
+  } catch (error) {
+    console.error("clipboard.read failed", error);
+  }
+  return null;
 }
 
 async function resolveImageTarget(ext: string) {
@@ -1487,17 +1589,13 @@ async function resolveImageTarget(ext: string) {
   if (currentPath) {
     const baseDir = await dirname(currentPath);
     const assetsDir = await join(baseDir, "assets");
-    if (!(await exists(assetsDir))) {
-      await mkdir(assetsDir, { recursive: true });
-    }
+    await mkdir(assetsDir, { recursive: true });
     const fullPath = await join(assetsDir, fileName);
     return { fullPath, linkPath: `assets/${fileName}` };
   }
   const pictures = await pictureDir();
   const targetDir = await join(pictures, "EaseMD");
-  if (!(await exists(targetDir))) {
-    await mkdir(targetDir, { recursive: true });
-  }
+  await mkdir(targetDir, { recursive: true });
   const fullPath = await join(targetDir, fileName);
   return { fullPath, linkPath: fullPath };
 }
@@ -1875,7 +1973,7 @@ async function handleContextAction(action: string) {
       });
       if (file && !Array.isArray(file)) {
         const bytes = await readFile(file);
-        await insertImageBytes(bytes, extname(file));
+        await insertImageBytes(bytes, await extname(file));
       }
       break;
     }
@@ -1967,24 +2065,15 @@ async function setupWindowHandlers() {
   });
 
   window.addEventListener("paste", async (event) => {
-    const items = event.clipboardData?.items;
-    if (!items) {
+    let image = await getImageFromPasteEvent(event);
+    if (!image) {
+      image = await getImageFromClipboardApi();
+    }
+    if (!image) {
       return;
     }
-    for (const item of items) {
-      if (!item.type.startsWith("image/")) {
-        continue;
-      }
-      const file = item.getAsFile();
-      if (!file) {
-        continue;
-      }
-      const buffer = await file.arrayBuffer();
-      const extension = file.type.split("/")[1] ?? "png";
-      await insertImageBytes(new Uint8Array(buffer), extension);
-      event.preventDefault();
-      break;
-    }
+    event.preventDefault();
+    await insertImageBytes(image.bytes, image.extension);
   });
 }
 
