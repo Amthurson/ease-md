@@ -3,15 +3,10 @@
   "version": "0.1.0",
   "identifier": "com.ease.md",
   "build": {
-    "beforeDevCommand": "",
+    "beforeDevCommand": "npm run dev -- --host 127.0.0.1 --port 1420",
+    "devUrl": "http://127.0.0.1:1420",
     "beforeBuildCommand": "",
-    "frontendDist": [
-      "../dist/index.html",
-      "../dist/main.js",
-      "../dist/main.css",
-      "../dist/main.js.map",
-      "../dist/main.css.map"
-    ]
+    "frontendDist": "../dist"
   },
   "app": {
     "windows": [
@@ -21,7 +16,7 @@
         "minWidth": 484,
         "width": 960,
         "height": 640,
-        "url": "tauri://localhost/index.html",
+        "url": "index.html",
         "devtools": true
       }
     ],

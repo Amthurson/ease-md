@@ -29,7 +29,7 @@ import { dirname, join, extname, pictureDir } from "@tauri-apps/api/path";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { emitTo, listen } from "@tauri-apps/api/event";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 
 const editorHost = document.querySelector<HTMLDivElement>("#editor")!;
 const statusMsgEl = document.querySelector<HTMLSpanElement>("#statusMsg")!;
@@ -54,6 +54,26 @@ const themeBtn = document.querySelector<HTMLButtonElement>("#themeBtn")!;
 const themeIcon = document.querySelector<HTMLSpanElement>("#themeIcon")!;
 const editorPaneEl = document.querySelector<HTMLElement>(".editor-pane")!;
 const sidebarToggleBtn = document.querySelector<HTMLButtonElement>("#sidebarToggleBtn")!;
+const prefsModal = document.querySelector<HTMLDivElement>("#prefsModal")!;
+const prefsCloseBtn = document.querySelector<HTMLButtonElement>("#prefsCloseBtn")!;
+const prefsNavItems = Array.from(
+  document.querySelectorAll<HTMLButtonElement>(".prefs-nav-item")
+);
+const imageInsertRuleEl = document.querySelector<HTMLSelectElement>("#imageInsertRule")!;
+const imageRuleLocalEl = document.querySelector<HTMLInputElement>("#imageRuleLocal")!;
+const imageRuleNetworkEl = document.querySelector<HTMLInputElement>("#imageRuleNetwork")!;
+const imagePreferRelativeEl = document.querySelector<HTMLInputElement>("#imagePreferRelative")!;
+const imageYamlAutoUploadEl = document.querySelector<HTMLInputElement>("#imageYamlAutoUpload")!;
+const imageAutoConvertUrlEl = document.querySelector<HTMLInputElement>("#imageAutoConvertUrl")!;
+const uploadServiceEl = document.querySelector<HTMLSelectElement>("#uploadService")!;
+const picgoPathEl = document.querySelector<HTMLInputElement>("#picgoPath")!;
+const pickPicgoBtn = document.querySelector<HTMLButtonElement>("#pickPicgoBtn")!;
+const validatePicgoBtn = document.querySelector<HTMLButtonElement>("#validatePicgoBtn")!;
+const picgoResultModal = document.querySelector<HTMLDivElement>("#picgoResultModal")!;
+const picgoResultTitle = document.querySelector<HTMLHeadingElement>("#picgoResultTitle")!;
+const picgoResultBody = document.querySelector<HTMLPreElement>("#picgoResultBody")!;
+const picgoResultCloseBtn = document.querySelector<HTMLButtonElement>("#picgoResultCloseBtn")!;
+const picgoResultOkBtn = document.querySelector<HTMLButtonElement>("#picgoResultOkBtn")!;
 const appWindow = getCurrentWindow();
 
 const SIDEBAR_WIDTH_KEY = "ease-md:sidebar-width";
@@ -119,38 +139,86 @@ function parseImageMarkdown(value: string) {
   return { alt: match[1], src: match[2] };
 }
 
-function resolveImageForDisplay(rawSrc: string) {
+function preferSecureImageUrl(src: string) {
+  if (!src) {
+    return src;
+  }
+  if (/^http:\/\//i.test(src)) {
+    return src.replace(/^http:\/\//i, "https://");
+  }
+  return src;
+}
+
+function guessImageExtensionFromPath(pathValue: string) {
+  const clean = pathValue.split("?")[0].split("#")[0].toLowerCase();
+  const match = clean.match(/\.([a-z0-9]+)$/i);
+  return getExtensionFromMime(`image/${match?.[1] ?? "png"}`);
+}
+
+async function resolveImageForDisplay(rawSrc: string) {
   if (!rawSrc) {
     return rawSrc;
   }
-  const normalized = rawSrc.replace(/\\/g, "/");
+  let normalized = rawSrc.replace(/\\/g, "/");
+  if (/^http:\/\//i.test(normalized)) {
+    normalized = preferSecureImageUrl(normalized);
+  }
+  if (/^https?:\/\/asset\.localhost\//i.test(normalized)) {
+    try {
+      const encoded = normalized.replace(/^https?:\/\/asset\.localhost\//i, "");
+      normalized = decodeURIComponent(encoded);
+    } catch {
+      normalized = normalized.replace(/^https?:\/\/asset\.localhost\//i, "");
+    }
+  }
+  if (/^file:\/\//i.test(normalized)) {
+    try {
+      normalized = decodeURIComponent(normalized.replace(/^file:\/\//i, ""));
+    } catch {
+      normalized = normalized.replace(/^file:\/\//i, "");
+    }
+    normalized = normalized.replace(/^\/([a-z]:\/)/i, "$1");
+  }
+  normalized = normalized.replace(/\\/g, "/");
   if (/^(https?:|data:|blob:)/i.test(normalized)) {
     return normalized;
   }
   if (/^tauri:\/\//i.test(normalized) || /^asset:\/\//i.test(normalized)) {
     return normalized;
   }
-  // Absolute local paths must be converted to asset protocol in Tauri WebView.
-  if (/^[a-z]:\//i.test(normalized) || normalized.startsWith("//") || normalized.startsWith("/")) {
-    return convertFileSrc(normalized);
+  let absolutePath: string | null = null;
+  if (
+    /^[a-z]:\//i.test(normalized) ||
+    normalized.startsWith("//") ||
+    normalized.startsWith("/")
+  ) {
+    absolutePath = normalized;
+  } else if (currentPath) {
+    absolutePath = await join(await dirname(currentPath), normalized);
   }
-  if (currentPath) {
-    return convertFileSrc(join(dirname(currentPath), normalized));
+  if (!absolutePath) {
+    return normalized;
   }
-  return normalized;
+  try {
+    const bytes = await readFile(absolutePath);
+    return bytesToDataUrl(bytes, guessImageExtensionFromPath(absolutePath));
+  } catch {
+    return normalized;
+  }
 }
 
-function decorateImages(html: string) {
+async function decorateImages(html: string) {
   const container = document.createElement("div");
   container.innerHTML = html;
-  container.querySelectorAll("img").forEach((img) => {
+  const images = Array.from(container.querySelectorAll("img"));
+  for (const img of images) {
     const raw = img.getAttribute("src") ?? "";
-    const display = resolveImageForDisplay(raw);
+    const display = await resolveImageForDisplay(raw);
     if (display !== raw) {
       img.setAttribute("data-original", raw);
       img.setAttribute("src", display);
     }
-  });
+  }
   return container.innerHTML;
 }
 
@@ -228,7 +296,8 @@ function showImageMeta(node: any, pos: number, img: HTMLImageElement) {
   textarea.style.left = `${rect.left}px`;
   textarea.style.top = `${rect.bottom + 6}px`;
   textarea.style.width = `${Math.min(rect.width, window.innerWidth - rect.left - 16)}px`;
-  textarea.value = formatImageMarkdown(node.attrs.original ?? node.attrs.src, node.attrs.alt ?? "");
+  const originalSrc = (node.attrs.original ?? node.attrs.src ?? "") as string;
+  textarea.value = formatImageMarkdown(preferSecureImageUrl(originalSrc), node.attrs.alt ?? "");
   textarea.classList.remove("hidden");
   textarea.focus();
   textarea.select();
@@ -243,7 +312,7 @@ function hideImageMeta() {
   imageMetaState = null;
 }
 
-function applyImageMeta() {
+async function applyImageMeta() {
   if (!imageMetaEditor || !imageMetaState || !editor) {
     hideImageMeta();
     return;
@@ -253,7 +322,7 @@ function applyImageMeta() {
     hideImageMeta();
     return;
   }
-  const displaySrc = resolveImageForDisplay(parsed.src);
+  const displaySrc = await resolveImageForDisplay(parsed.src);
   editor.view.dispatch(
     editor.state.tr.setNodeMarkup(imageMetaState.pos, undefined, {
       ...imageMetaState.node.attrs,
@@ -329,6 +398,7 @@ const ImageWithMarkdown = Image.extend({
 const RECENT_KEY = "ease-md:recent-files";
 const DRAFT_KEY = "ease-md:draft";
 const THEME_KEY = "ease-md:theme";
+const PREFS_KEY = "ease-md:prefs";
 const MAX_RECENTS = 20;
 
 let editor: Editor | null = null;
@@ -353,8 +423,82 @@ let currentContext:
 let filesViewMode: "tree" | "list" = "tree";
 let createdDirs = new Set<string>();
 
+type Preferences = {
+  imageInsertRule: "local" | "upload";
+  imageRuleLocal: boolean;
+  imageRuleNetwork: boolean;
+  imagePreferRelative: boolean;
+  imageYamlAutoUpload: boolean;
+  imageAutoConvertUrl: boolean;
+  uploadService: "picgo-app";
+  picgoPath: string;
+};
+
+type PicgoUploadResponse = {
+  success: boolean;
+  url: string | null;
+  stdout: string;
+  stderr: string;
+};
+
+const defaultPreferences: Preferences = {
+  imageInsertRule: "local",
+  imageRuleLocal: true,
+  imageRuleNetwork: true,
+  imagePreferRelative: false,
+  imageYamlAutoUpload: false,
+  imageAutoConvertUrl: false,
+  uploadService: "picgo-app",
+  picgoPath: ""
+};
+
+let preferences: Preferences = { ...defaultPreferences };
+
 function normalizeFsPath(pathValue: string) {
   return pathValue.replace(/\\/g, "/").toLowerCase();
+}
+
+function loadPreferences() {
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    if (!raw) {
+      return { ...defaultPreferences };
+    }
+    const parsed = JSON.parse(raw);
+    return {
+      ...defaultPreferences,
+      ...parsed
+    } as Preferences;
+  } catch {
+    return { ...defaultPreferences };
+  }
+}
+
+function savePreferences() {
+  localStorage.setItem(PREFS_KEY, JSON.stringify(preferences));
+}
+
+function syncPrefsForm() {
+  imageInsertRuleEl.value = preferences.imageInsertRule;
+  imageRuleLocalEl.checked = preferences.imageRuleLocal;
+  imageRuleNetworkEl.checked = preferences.imageRuleNetwork;
+  imagePreferRelativeEl.checked = preferences.imagePreferRelative;
+  imageYamlAutoUploadEl.checked = preferences.imageYamlAutoUpload;
+  imageAutoConvertUrlEl.checked = preferences.imageAutoConvertUrl;
+  uploadServiceEl.value = preferences.uploadService;
+  picgoPathEl.value = preferences.picgoPath;
+}
+
+function openPreferences(tab: string = "image") {
+  prefsModal.classList.remove("hidden");
+  prefsNavItems.forEach((item) => {
+    item.classList.toggle("active", item.dataset.prefsTab === tab);
+  });
+  syncPrefsForm();
+}
+
+function closePreferences() {
+  prefsModal.classList.add("hidden");
 }
 
 function ensureHoverTooltip() {
@@ -968,12 +1112,12 @@ function getMarkdown() {
   return turndown.turndown(editor.getHTML());
 }
 
-function setMarkdown(markdown: string) {
+async function setMarkdown(markdown: string) {
   if (!editor) {
     return;
   }
   const normalized = markdown.replace(/\t/g, "  ");
-  const html = preserveLeadingWhitespace(decorateImages(md.render(normalized)));
+  const html = preserveLeadingWhitespace(await decorateImages(md.render(normalized)));
   editor.commands.setContent(html, false);
 }
 
@@ -1245,7 +1389,7 @@ async function maybeRestoreDraft(path: string | null, currentText: string) {
     "Found an unsaved draft. Restore it?"
   );
   if (confirmRestore) {
-    setMarkdown(draft.text);
+    await setMarkdown(draft.text);
     isDirty = true;
     setDirtyFlag();
     setStatus("Draft restored");
@@ -1253,7 +1397,7 @@ async function maybeRestoreDraft(path: string | null, currentText: string) {
 }
 
 function setEditorContent(text: string) {
-  setMarkdown(text);
+  void setMarkdown(text);
   sourceEditor.value = text;
   updateWordCount();
   updateOutline();
@@ -1381,7 +1525,7 @@ function setSourceMode(enabled: boolean) {
     sourceEditor.value = getMarkdown();
     sourceEditor.focus();
   } else {
-    setMarkdown(sourceEditor.value);
+    void setMarkdown(sourceEditor.value);
     editor?.commands.focus();
     updateCodeLanguagePicker();
   }
@@ -1465,19 +1609,46 @@ async function handleDroppedFile(path: string) {
   const lower = path.toLowerCase();
   if (lower.match(/\.(png|jpe?g|gif|webp|bmp|svg)$/)) {
     const bytes = await readFile(path);
-    await insertImageBytes(bytes, await extname(path));
+    try {
+      await insertImageBytes(bytes, await extname(path));
+    } catch {}
     return;
   }
   await openPath(path);
 }
 
 async function insertImageBytes(bytes: Uint8Array, extension: string | null | undefined) {
-  const cleanExt = (extension ?? "").replace(".", "") || "png";
+  const cleanExt = (typeof extension === "string" ? extension : "").replace(".", "") || "png";
   const { fullPath, linkPath } = await resolveImageTarget(cleanExt);
   await writeFile(fullPath, bytes);
-  const previewSrc = bytesToDataUrl(bytes, cleanExt);
+  let finalLink = linkPath;
+  let previewSrc = bytesToDataUrl(bytes, cleanExt);
+  if (preferences.imageInsertRule === "upload") {
+    if (!preferences.picgoPath.trim()) {
+      setStatus("PicGo path is required");
+      throw new Error("PicGo path is empty");
+    }
+    try {
+      const uploadedRaw = await invoke<string>("picgo_upload", {
+        picgoPath: preferences.picgoPath,
+        imagePath: fullPath
+      });
+      const uploaded = parsePicgoUploadResponse(uploadedRaw);
+      if (!uploaded.success) {
+        const detail = [uploaded.stderr, uploaded.stdout].filter(Boolean).join("\n");
+        throw new Error(detail || "PicGo upload failed");
+      }
+      finalLink = preferSecureImageUrl(await resolvePicgoUrl(uploaded));
+      previewSrc = finalLink;
+      setStatus("Image uploaded via PicGo");
+    } catch (error) {
+      console.error(error);
+      setStatus("PicGo upload failed");
+      throw error;
+    }
+  }
   if (isSourceMode) {
-    const markdown = formatImageMarkdown(linkPath, `image-${Date.now()}`);
+    const markdown = formatImageMarkdown(finalLink, `image-${Date.now()}`);
     const start = sourceEditor.selectionStart ?? sourceEditor.value.length;
     const end = sourceEditor.selectionEnd ?? start;
     sourceEditor.setRangeText(`${markdown}\n`, start, end, "end");
@@ -1490,7 +1661,7 @@ async function insertImageBytes(bytes: Uint8Array, extension: string | null | un
     editor
       ?.chain()
       .focus()
-      .setImage({ src: previewSrc, original: linkPath })
+      .setImage({ src: previewSrc, original: finalLink })
       .run();
   }
   setStatus("Image inserted");
@@ -1505,6 +1676,103 @@ function bytesToDataUrl(bytes: Uint8Array, extension: string) {
     binary += String.fromCharCode(...chunk);
   }
   return `data:${mime};base64,${btoa(binary)}`;
+}
+
+function sanitizeExtractedUrl(candidate: string | null | undefined) {
+  if (!candidate) {
+    return null;
+  }
+  let value = candidate.trim();
+  value = value.replace(/^[<\[(\"']+/, "");
+  value = value.replace(/[>\])}\"',.;:!?]+$/, "");
+  try {
+    const url = new URL(value);
+    if (url.protocol === "http:" || url.protocol === "https:") {
+      return value;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function extractFirstUrl(text: string) {
+  const match = text.match(/https?:\/\/[^\s"'<>]+/i);
+  return sanitizeExtractedUrl(match ? match[0] : null);
+}
+
+function parsePicgoUploadResponse(raw: string): PicgoUploadResponse {
+  const fallbackUrl = extractFirstUrl(raw) ?? null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<PicgoUploadResponse>;
+    return {
+      success: Boolean(parsed.success),
+      url:
+        typeof parsed.url === "string" && parsed.url.length > 0
+          ? preferSecureImageUrl(sanitizeExtractedUrl(parsed.url) ?? parsed.url)
+          : fallbackUrl ? preferSecureImageUrl(fallbackUrl) : null,
+      stdout: typeof parsed.stdout === "string" ? parsed.stdout : raw,
+      stderr: typeof parsed.stderr === "string" ? parsed.stderr : ""
+    };
+  } catch {
+    return {
+      success: true,
+      url: fallbackUrl ? preferSecureImageUrl(fallbackUrl) : null,
+      stdout: raw,
+      stderr: ""
+    };
+  }
+}
+
+async function resolvePicgoUrl(uploadResult: PicgoUploadResponse) {
+  if (uploadResult.url) {
+    const normalized = sanitizeExtractedUrl(uploadResult.url) ?? uploadResult.url;
+    return normalized;
+  }
+  try {
+    const clip = await navigator.clipboard.readText();
+    const url = sanitizeExtractedUrl(extractFirstUrl(clip ?? ""));
+    if (url) {
+      return url;
+    }
+  } catch (error) {
+    console.error("clipboard.readText failed", error);
+  }
+  throw new Error("PicGo upload succeeded but URL not found");
+}
+
+function openPicgoResultModal(title: string, body: string) {
+  picgoResultTitle.textContent = title;
+  picgoResultBody.textContent = body;
+  picgoResultModal.classList.remove("hidden");
+}
+
+function closePicgoResultModal() {
+  picgoResultModal.classList.add("hidden");
+}
+
+function formatPicgoValidateBody(result: PicgoUploadResponse) {
+  const lines: string[] = [];
+  if (result.success) {
+    lines.push("验证成功");
+  } else {
+    lines.push("验证失败");
+  }
+  if (result.url) {
+    lines.push("");
+    lines.push(`URL: ${result.url}`);
+  }
+  if (result.stdout?.trim()) {
+    lines.push("");
+    lines.push("stdout:");
+    lines.push(result.stdout.trim());
+  }
+  if (result.stderr?.trim()) {
+    lines.push("");
+    lines.push("stderr:");
+    lines.push(result.stderr.trim());
+  }
+  return lines.join("\n");
 }
 
 function getExtensionFromMime(mime: string) {
@@ -1973,7 +2241,9 @@ async function handleContextAction(action: string) {
       });
       if (file && !Array.isArray(file)) {
         const bytes = await readFile(file);
-        await insertImageBytes(bytes, await extname(file));
+        try {
+          await insertImageBytes(bytes, await extname(file));
+        } catch {}
       }
       break;
     }
@@ -2035,6 +2305,9 @@ async function setupWindowHandlers() {
         }
         break;
       }
+      case "file_preferences":
+        openPreferences("image");
+        break;
       case "file_save":
         await saveFile();
         break;
@@ -2065,6 +2338,21 @@ async function setupWindowHandlers() {
   });
 
   window.addEventListener("paste", async (event) => {
+    const hasImageInClipboard = (() => {
+      const clipboard = event.clipboardData;
+      if (!clipboard) {
+        return false;
+      }
+      const files = Array.from(clipboard.files ?? []);
+      if (files.some((file) => file.type.startsWith("image/"))) {
+        return true;
+      }
+      const items = Array.from(clipboard.items ?? []);
+      return items.some((item) => item.type.startsWith("image/"));
+    })();
+    if (hasImageInClipboard) {
+      event.preventDefault();
+    }
     let image = await getImageFromPasteEvent(event);
     if (!image) {
       image = await getImageFromClipboardApi();
@@ -2073,7 +2361,9 @@ async function setupWindowHandlers() {
       return;
     }
     event.preventDefault();
-    await insertImageBytes(image.bytes, image.extension);
+    try {
+      await insertImageBytes(image.bytes, image.extension);
+    } catch {}
   });
 }
 
@@ -2110,6 +2400,108 @@ function initEditor() {
       if (!isCodeLanguageInteracting) {
         updateCodeLanguagePicker();
       }
+    }
+  });
+}
+
+function initPreferencesUI() {
+  preferences = loadPreferences();
+  syncPrefsForm();
+
+  prefsCloseBtn.addEventListener("click", () => closePreferences());
+  prefsModal.addEventListener("click", (event) => {
+    if (event.target === prefsModal) {
+      closePreferences();
+    }
+  });
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !prefsModal.classList.contains("hidden")) {
+      closePreferences();
+    }
+    if (event.key === "Escape" && !picgoResultModal.classList.contains("hidden")) {
+      closePicgoResultModal();
+    }
+  });
+  picgoResultCloseBtn.addEventListener("click", () => closePicgoResultModal());
+  picgoResultOkBtn.addEventListener("click", () => closePicgoResultModal());
+  picgoResultModal.addEventListener("click", (event) => {
+    if (event.target === picgoResultModal) {
+      closePicgoResultModal();
+    }
+  });
+
+  prefsNavItems.forEach((item) => {
+    item.addEventListener("click", () => {
+      prefsNavItems.forEach((i) => i.classList.remove("active"));
+      item.classList.add("active");
+    });
+  });
+
+  imageInsertRuleEl.addEventListener("change", () => {
+    preferences.imageInsertRule = imageInsertRuleEl.value as "local" | "upload";
+    savePreferences();
+  });
+  imageRuleLocalEl.addEventListener("change", () => {
+    preferences.imageRuleLocal = imageRuleLocalEl.checked;
+    savePreferences();
+  });
+  imageRuleNetworkEl.addEventListener("change", () => {
+    preferences.imageRuleNetwork = imageRuleNetworkEl.checked;
+    savePreferences();
+  });
+  imagePreferRelativeEl.addEventListener("change", () => {
+    preferences.imagePreferRelative = imagePreferRelativeEl.checked;
+    savePreferences();
+  });
+  imageYamlAutoUploadEl.addEventListener("change", () => {
+    preferences.imageYamlAutoUpload = imageYamlAutoUploadEl.checked;
+    savePreferences();
+  });
+  imageAutoConvertUrlEl.addEventListener("change", () => {
+    preferences.imageAutoConvertUrl = imageAutoConvertUrlEl.checked;
+    savePreferences();
+  });
+  uploadServiceEl.addEventListener("change", () => {
+    preferences.uploadService = uploadServiceEl.value as "picgo-app";
+    savePreferences();
+  });
+  picgoPathEl.addEventListener("change", () => {
+    preferences.picgoPath = picgoPathEl.value.trim();
+    savePreferences();
+  });
+
+  pickPicgoBtn.addEventListener("click", async () => {
+    const file = await open({
+      multiple: false,
+      filters: [{ name: "Executable", extensions: ["exe", "cmd", "bat"] }]
+    });
+    if (!file || Array.isArray(file)) {
+      return;
+    }
+    preferences.picgoPath = file;
+    picgoPathEl.value = file;
+    savePreferences();
+  });
+
+  validatePicgoBtn.addEventListener("click", async () => {
+    const picgoPath = preferences.picgoPath.trim();
+    if (!picgoPath) {
+      setStatus("PicGo path is required");
+      openPicgoResultModal("验证结果", "PicGo 路径未配置。");
+      return;
+    }
+    try {
+      const raw = await invoke<string>("picgo_validate_upload", {
+        picgoPath
+      });
+      const result = parsePicgoUploadResponse(raw);
+      const title = result.success ? "验证成功" : "验证失败";
+      openPicgoResultModal(title, formatPicgoValidateBody(result));
+      setStatus(result.success ? "PicGo validate passed" : "PicGo validation failed");
+    } catch (error) {
+      console.error(error);
+      openPicgoResultModal("验证失败", String(error));
+      setStatus("PicGo validation failed");
     }
   });
 }
@@ -2409,6 +2801,7 @@ window.addEventListener("keydown", (event) => {
 function initApp() {
   setStatus("JS loaded");
   initEditor();
+  initPreferencesUI();
   initSidebarWidth();
   setSidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
   createdDirs = new Set<string>();

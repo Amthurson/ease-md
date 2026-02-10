@@ -1,10 +1,11 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ease MD</title>
-    <link rel="stylesheet" href="./main.css" />
+    <script type="module" crossorigin src="./assets/index-WA9s7UxN.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DToci7KO.css">
   </head>
   <body>
     <div id="app" class="split-view">
@@ -59,7 +60,71 @@
     </div>
 
     <div id="contextMenu" class="context-menu hidden"></div>
+    <div id="prefsModal" class="prefs-modal hidden" role="dialog" aria-modal="true" aria-label="Preferences">
+      <div class="prefs-shell">
+        <div class="prefs-header">
+          <h2>偏好设置</h2>
+          <button id="prefsCloseBtn" class="prefs-close" aria-label="Close">×</button>
+        </div>
+        <div class="prefs-body">
+          <aside class="prefs-nav">
+            <button class="prefs-nav-item" data-prefs-tab="general">通用</button>
+            <button class="prefs-nav-item" data-prefs-tab="appearance">外观</button>
+            <button class="prefs-nav-item" data-prefs-tab="editor">编辑器</button>
+            <button class="prefs-nav-item active" data-prefs-tab="image">图像</button>
+            <button class="prefs-nav-item" data-prefs-tab="markdown">Markdown</button>
+            <button class="prefs-nav-item" data-prefs-tab="export">导出</button>
+          </aside>
+          <main class="prefs-content">
+            <section id="prefsImagePanel" class="prefs-panel">
+              <h3>图像</h3>
+              <div class="prefs-row">
+                <label for="imageInsertRule">插入图片时</label>
+                <select id="imageInsertRule">
+                  <option value="local">本地保存</option>
+                  <option value="upload">上传图片</option>
+                </select>
+              </div>
+              <label class="prefs-check"><input type="checkbox" id="imageRuleLocal" checked />对本地位置的图片应用上述规则</label>
+              <label class="prefs-check"><input type="checkbox" id="imageRuleNetwork" checked />对网络位置的图片应用上述规则</label>
+              <label class="prefs-check"><input type="checkbox" id="imagePreferRelative" />优先使用相对路径</label>
+              <label class="prefs-check"><input type="checkbox" id="imageYamlAutoUpload" />允许根据 YAML 设置自动上传图片</label>
+              <label class="prefs-check"><input type="checkbox" id="imageAutoConvertUrl" />插入时自动转图片 URL</label>
 
-    <script type="module" src="./main.js"></script>
+              <h4>上传服务设置</h4>
+              <div class="prefs-row">
+                <label for="uploadService">上传服务</label>
+                <select id="uploadService">
+                  <option value="picgo-app">PicGo (app)</option>
+                </select>
+              </div>
+              <div class="prefs-row prefs-path-row">
+                <label for="picgoPath">PicGo 路径</label>
+                <input id="picgoPath" type="text" placeholder="C:\\Program Files\\PicGo\\PicGo.exe" />
+                <button id="pickPicgoBtn" class="ghost small">浏览</button>
+              </div>
+              <div class="prefs-actions">
+                <button id="validatePicgoBtn" class="ghost small">验证图片上传选项</button>
+              </div>
+            </section>
+          </main>
+        </div>
+      </div>
+    </div>
+    <div id="picgoResultModal" class="prefs-modal hidden" role="dialog" aria-modal="true" aria-label="PicGo Validate Result">
+      <div class="prefs-shell picgo-result-shell">
+        <div class="prefs-header">
+          <h2 id="picgoResultTitle">验证结果</h2>
+          <button id="picgoResultCloseBtn" class="prefs-close" aria-label="Close">×</button>
+        </div>
+        <div class="prefs-content picgo-result-content">
+          <pre id="picgoResultBody" class="picgo-result-body"></pre>
+          <div class="prefs-actions">
+            <button id="picgoResultOkBtn" class="ghost small">OK</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </body>
 </html>
