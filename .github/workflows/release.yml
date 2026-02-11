@@ -15,9 +15,6 @@ jobs:
       HTTP_PROXY: ""
       HTTPS_PROXY: ""
       ALL_PROXY: ""
-      http_proxy: ""
-      https_proxy: ""
-      all_proxy: ""
       npm_config_proxy: ""
       npm_config_https_proxy: ""
 
