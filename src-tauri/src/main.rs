@@ -16,6 +16,11 @@ use windows::Win32::Foundation::RPC_E_CHANGED_MODE;
 
 struct RecentState(Mutex<Vec<String>>);
 
+#[tauri::command]
+fn app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
 fn build_menu<R: Runtime>(
     app: &tauri::AppHandle<R>,
     recents: &[String],
@@ -252,6 +257,7 @@ fn main() {
         .plugin(tauri_plugin_fs::init())
         .manage(RecentState(Mutex::new(Vec::new())))
         .invoke_handler(tauri::generate_handler![
+            app_version,
             set_recent_menu,
             reveal_in_folder,
             picgo_validate,

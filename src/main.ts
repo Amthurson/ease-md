@@ -74,6 +74,59 @@ const picgoResultTitle = document.querySelector<HTMLHeadingElement>("#picgoResul
 const picgoResultBody = document.querySelector<HTMLPreElement>("#picgoResultBody")!;
 const picgoResultCloseBtn = document.querySelector<HTMLButtonElement>("#picgoResultCloseBtn")!;
 const picgoResultOkBtn = document.querySelector<HTMLButtonElement>("#picgoResultOkBtn")!;
+const prefsPanels = Array.from(
+  document.querySelectorAll<HTMLElement>(".prefs-panel[data-prefs-panel]")
+);
+const genStartupModeEl = document.querySelector<HTMLSelectElement>("#genStartupMode")!;
+const genAutoSaveEl = document.querySelector<HTMLInputElement>("#genAutoSave")!;
+const genSaveOnSwitchEl = document.querySelector<HTMLInputElement>("#genSaveOnSwitch")!;
+const genRestoreDraftBtn = document.querySelector<HTMLButtonElement>("#genRestoreDraftBtn")!;
+const genLanguageEl = document.querySelector<HTMLSelectElement>("#genLanguage")!;
+const genCheckUpdateBtn = document.querySelector<HTMLButtonElement>("#genCheckUpdateBtn")!;
+const genAutoCheckUpdateEl = document.querySelector<HTMLInputElement>("#genAutoCheckUpdate")!;
+const genIncludePrereleaseEl = document.querySelector<HTMLInputElement>("#genIncludePrerelease")!;
+const genCustomizeShortcutBtn = document.querySelector<HTMLButtonElement>("#genCustomizeShortcutBtn")!;
+const genResetDialogsBtn = document.querySelector<HTMLButtonElement>("#genResetDialogsBtn")!;
+const genDebugModeEl = document.querySelector<HTMLInputElement>("#genDebugMode")!;
+const genTelemetryEl = document.querySelector<HTMLInputElement>("#genTelemetry")!;
+const genOpenAdvancedBtn = document.querySelector<HTMLButtonElement>("#genOpenAdvancedBtn")!;
+const genResetAdvancedBtn = document.querySelector<HTMLButtonElement>("#genResetAdvancedBtn")!;
+const mdStrictModeEl = document.querySelector<HTMLInputElement>("#mdStrictMode")!;
+const mdHeadingStyleEl = document.querySelector<HTMLSelectElement>("#mdHeadingStyle")!;
+const mdUnorderedListStyleEl = document.querySelector<HTMLSelectElement>("#mdUnorderedListStyle")!;
+const mdOrderedListStyleEl = document.querySelector<HTMLSelectElement>("#mdOrderedListStyle")!;
+const mdInlineMathEl = document.querySelector<HTMLInputElement>("#mdInlineMath")!;
+const mdSubscriptEl = document.querySelector<HTMLInputElement>("#mdSubscript")!;
+const mdSuperscriptEl = document.querySelector<HTMLInputElement>("#mdSuperscript")!;
+const mdHighlightEl = document.querySelector<HTMLInputElement>("#mdHighlight")!;
+const mdDiagramsEl = document.querySelector<HTMLInputElement>("#mdDiagrams")!;
+const mdSmartPunctuationModeEl = document.querySelector<HTMLSelectElement>("#mdSmartPunctuationMode")!;
+const mdSmartQuotesEl = document.querySelector<HTMLInputElement>("#mdSmartQuotes")!;
+const mdSmartDashesEl = document.querySelector<HTMLInputElement>("#mdSmartDashes")!;
+const mdUnicodePunctuationEl = document.querySelector<HTMLInputElement>("#mdUnicodePunctuation")!;
+const mdCodeShowLineNumbersEl = document.querySelector<HTMLInputElement>("#mdCodeShowLineNumbers")!;
+const mdCodeWrapEl = document.querySelector<HTMLInputElement>("#mdCodeWrap")!;
+const mdCodeIndentEl = document.querySelector<HTMLSelectElement>("#mdCodeIndent")!;
+const mdMathAutoNumberEl = document.querySelector<HTMLInputElement>("#mdMathAutoNumber")!;
+const mdMathAllowBackslashNewlineEl = document.querySelector<HTMLInputElement>("#mdMathAllowBackslashNewline")!;
+const mdMathEnablePhysicsEl = document.querySelector<HTMLInputElement>("#mdMathEnablePhysics")!;
+const mdMathExportHtmlModeEl = document.querySelector<HTMLSelectElement>("#mdMathExportHtmlMode")!;
+const mdFirstLineIndentEl = document.querySelector<HTMLInputElement>("#mdFirstLineIndent")!;
+const mdShowBrEl = document.querySelector<HTMLInputElement>("#mdShowBr")!;
+const mdEditWhitespacePolicyEl = document.querySelector<HTMLSelectElement>("#mdEditWhitespacePolicy")!;
+const mdExportWhitespacePolicyEl = document.querySelector<HTMLSelectElement>("#mdExportWhitespacePolicy")!;
+const edDefaultIndentEl = document.querySelector<HTMLSelectElement>("#edDefaultIndent")!;
+const edAlignIndentEl = document.querySelector<HTMLInputElement>("#edAlignIndent")!;
+const edPairBracketsQuotesEl = document.querySelector<HTMLInputElement>("#edPairBracketsQuotes")!;
+const edPairMarkdownSymbolsEl = document.querySelector<HTMLInputElement>("#edPairMarkdownSymbols")!;
+const edShowCurrentMarkdownSourceEl = document.querySelector<HTMLInputElement>("#edShowCurrentMarkdownSource")!;
+const edCopyPlainAsMarkdownEl = document.querySelector<HTMLInputElement>("#edCopyPlainAsMarkdown")!;
+const edCopyCutWholeLineEl = document.querySelector<HTMLInputElement>("#edCopyCutWholeLine")!;
+const edNewlineLfEl = document.querySelector<HTMLInputElement>("#edNewlineLf")!;
+const edNewlineCrlfEl = document.querySelector<HTMLInputElement>("#edNewlineCrlf")!;
+const edSpellcheckModeEl = document.querySelector<HTMLSelectElement>("#edSpellcheckMode")!;
+const edTypewriterCenterEl = document.querySelector<HTMLInputElement>("#edTypewriterCenter")!;
+const edTypewriterOffBtn = document.querySelector<HTMLButtonElement>("#edTypewriterOffBtn")!;
 const appWindow = getCurrentWindow();
 
 const SIDEBAR_WIDTH_KEY = "ease-md:sidebar-width";
@@ -406,6 +459,7 @@ let currentPath: string | null = null;
 let isDirty = false;
 let isSourceMode = false;
 let draftTimer: number | undefined;
+let autoSaveTimer: number | undefined;
 let outlineTimer: number | undefined;
 let outlineHeadings: { level: number; text: string; pos?: number; line?: number }[] = [];
 let currentFolder: string | null = null;
@@ -416,6 +470,7 @@ let codeLanguagePickerEl: HTMLDivElement | null = null;
 let codeLanguageListEl: HTMLUListElement | null = null;
 let codeLanguageInputEl: HTMLInputElement | null = null;
 let isCodeLanguageInteracting = false;
+let sourceSnippetEl: HTMLDivElement | null = null;
 let currentContext:
   | { type: "text" }
   | { type: "image"; imagePath?: string; imageRaw?: string; imagePos?: number }
@@ -424,6 +479,14 @@ let filesViewMode: "tree" | "list" = "tree";
 let createdDirs = new Set<string>();
 
 type Preferences = {
+  genStartupMode: "new" | "restore" | "none";
+  genAutoSave: boolean;
+  genSaveOnSwitch: boolean;
+  genLanguage: "system" | "zh-CN" | "en-US";
+  genAutoCheckUpdate: boolean;
+  genIncludePrerelease: boolean;
+  genDebugMode: boolean;
+  genTelemetry: boolean;
   imageInsertRule: "local" | "upload";
   imageRuleLocal: boolean;
   imageRuleNetwork: boolean;
@@ -432,6 +495,40 @@ type Preferences = {
   imageAutoConvertUrl: boolean;
   uploadService: "picgo-app";
   picgoPath: string;
+  mdStrictMode: boolean;
+  mdHeadingStyle: "atx" | "setext";
+  mdUnorderedListStyle: "-" | "*" | "+";
+  mdOrderedListStyle: "dot" | "paren";
+  mdInlineMath: boolean;
+  mdSubscript: boolean;
+  mdSuperscript: boolean;
+  mdHighlight: boolean;
+  mdDiagrams: boolean;
+  mdSmartPunctuationMode: "input" | "off";
+  mdSmartQuotes: boolean;
+  mdSmartDashes: boolean;
+  mdUnicodePunctuation: boolean;
+  mdCodeShowLineNumbers: boolean;
+  mdCodeWrap: boolean;
+  mdCodeIndent: 2 | 4 | 8;
+  mdMathAutoNumber: boolean;
+  mdMathAllowBackslashNewline: boolean;
+  mdMathEnablePhysics: boolean;
+  mdMathExportHtmlMode: "svg" | "mathml";
+  mdFirstLineIndent: boolean;
+  mdShowBr: boolean;
+  mdEditWhitespacePolicy: "preserve" | "compact";
+  mdExportWhitespacePolicy: "preserve" | "compact";
+  edDefaultIndent: 2 | 4 | 6 | 8;
+  edAlignIndent: boolean;
+  edPairBracketsQuotes: boolean;
+  edPairMarkdownSymbols: boolean;
+  edShowCurrentMarkdownSource: boolean;
+  edCopyPlainAsMarkdown: boolean;
+  edCopyCutWholeLine: boolean;
+  edNewlineStyle: "lf" | "crlf";
+  edSpellcheckMode: "auto" | "off" | "en-US" | "zh-CN";
+  edTypewriterCenter: boolean;
 };
 
 type PicgoUploadResponse = {
@@ -442,6 +539,14 @@ type PicgoUploadResponse = {
 };
 
 const defaultPreferences: Preferences = {
+  genStartupMode: "new",
+  genAutoSave: false,
+  genSaveOnSwitch: false,
+  genLanguage: "system",
+  genAutoCheckUpdate: false,
+  genIncludePrerelease: false,
+  genDebugMode: false,
+  genTelemetry: true,
   imageInsertRule: "local",
   imageRuleLocal: true,
   imageRuleNetwork: true,
@@ -449,7 +554,41 @@ const defaultPreferences: Preferences = {
   imageYamlAutoUpload: false,
   imageAutoConvertUrl: false,
   uploadService: "picgo-app",
-  picgoPath: ""
+  picgoPath: "",
+  mdStrictMode: true,
+  mdHeadingStyle: "atx",
+  mdUnorderedListStyle: "-",
+  mdOrderedListStyle: "dot",
+  mdInlineMath: false,
+  mdSubscript: false,
+  mdSuperscript: false,
+  mdHighlight: false,
+  mdDiagrams: true,
+  mdSmartPunctuationMode: "input",
+  mdSmartQuotes: false,
+  mdSmartDashes: false,
+  mdUnicodePunctuation: false,
+  mdCodeShowLineNumbers: false,
+  mdCodeWrap: true,
+  mdCodeIndent: 4,
+  mdMathAutoNumber: false,
+  mdMathAllowBackslashNewline: true,
+  mdMathEnablePhysics: false,
+  mdMathExportHtmlMode: "svg",
+  mdFirstLineIndent: false,
+  mdShowBr: true,
+  mdEditWhitespacePolicy: "preserve",
+  mdExportWhitespacePolicy: "preserve",
+  edDefaultIndent: 2,
+  edAlignIndent: false,
+  edPairBracketsQuotes: true,
+  edPairMarkdownSymbols: false,
+  edShowCurrentMarkdownSource: false,
+  edCopyPlainAsMarkdown: true,
+  edCopyCutWholeLine: false,
+  edNewlineStyle: "crlf",
+  edSpellcheckMode: "auto",
+  edTypewriterCenter: false
 };
 
 let preferences: Preferences = { ...defaultPreferences };
@@ -465,10 +604,29 @@ function loadPreferences() {
       return { ...defaultPreferences };
     }
     const parsed = JSON.parse(raw);
-    return {
+    const merged = {
       ...defaultPreferences,
       ...parsed
     } as Preferences;
+    if (merged.mdCodeIndent !== 2 && merged.mdCodeIndent !== 4 && merged.mdCodeIndent !== 8) {
+      merged.mdCodeIndent = 4;
+    }
+    if (![2, 4, 6, 8].includes(merged.edDefaultIndent)) {
+      merged.edDefaultIndent = 2;
+    }
+    if (!["lf", "crlf"].includes(merged.edNewlineStyle)) {
+      merged.edNewlineStyle = "crlf";
+    }
+    if (!["auto", "off", "en-US", "zh-CN"].includes(merged.edSpellcheckMode)) {
+      merged.edSpellcheckMode = "auto";
+    }
+    if (!["new", "restore", "none"].includes(merged.genStartupMode)) {
+      merged.genStartupMode = "new";
+    }
+    if (!["system", "zh-CN", "en-US"].includes(merged.genLanguage)) {
+      merged.genLanguage = "system";
+    }
+    return merged;
   } catch {
     return { ...defaultPreferences };
   }
@@ -478,7 +636,314 @@ function savePreferences() {
   localStorage.setItem(PREFS_KEY, JSON.stringify(preferences));
 }
 
+function setActivePrefsTab(tab: string) {
+  const hasPanel = prefsPanels.some((panel) => panel.dataset.prefsPanel === tab);
+  const activeTab = hasPanel ? tab : "image";
+  prefsNavItems.forEach((item) => {
+    item.classList.toggle("active", item.dataset.prefsTab === activeTab);
+  });
+  prefsPanels.forEach((panel) => {
+    panel.classList.toggle("hidden", panel.dataset.prefsPanel !== activeTab);
+  });
+}
+
+function applyMarkdownPreferences() {
+  md.set({
+    typographer: preferences.mdSmartPunctuationMode !== "off",
+    breaks: preferences.mdShowBr
+  });
+  if (editorHost) {
+    editorHost.classList.toggle("md-code-wrap", preferences.mdCodeWrap);
+    editorHost.classList.toggle(
+      "md-first-line-indent",
+      preferences.mdFirstLineIndent
+    );
+    editorHost.classList.toggle(
+      "md-code-lines",
+      preferences.mdCodeShowLineNumbers
+    );
+    editorHost.style.setProperty(
+      "--md-code-indent",
+      String(preferences.mdCodeIndent)
+    );
+  }
+  sourceEditor.style.tabSize = String(preferences.mdCodeIndent);
+}
+
+function toNewlineStyle(text: string) {
+  const normalized = text.replace(/\r\n/g, "\n");
+  return preferences.edNewlineStyle === "crlf"
+    ? normalized.replace(/\n/g, "\r\n")
+    : normalized;
+}
+
+function getSourceLineBounds(value: string, cursor: number) {
+  const start = value.lastIndexOf("\n", Math.max(0, cursor - 1)) + 1;
+  const endIndex = value.indexOf("\n", cursor);
+  const end = endIndex === -1 ? value.length : endIndex;
+  return { start, end };
+}
+
+function getSourceCurrentLineIndent(value: string, cursor: number) {
+  const { start } = getSourceLineBounds(value, cursor);
+  const line = value.slice(start, cursor);
+  const match = line.match(/^[ \t]*/);
+  return match?.[0] ?? "";
+}
+
+function getIndentForNextTab(line: string) {
+  const unit = Math.max(1, preferences.edDefaultIndent);
+  const width = line.replace(/\t/g, " ").length;
+  const remain = unit - (width % unit);
+  return " ".repeat(remain === 0 ? unit : remain);
+}
+
+function applyEditorPreferences() {
+  sourceEditor.spellcheck = preferences.edSpellcheckMode !== "off";
+  if (preferences.edSpellcheckMode === "auto") {
+    sourceEditor.removeAttribute("lang");
+    editorHost.removeAttribute("lang");
+  } else {
+    sourceEditor.lang = preferences.edSpellcheckMode;
+    editorHost.lang = preferences.edSpellcheckMode;
+  }
+  sourceEditor.style.tabSize = String(preferences.edDefaultIndent);
+}
+
+function applyGeneralPreferences() {
+  if (preferences.genLanguage === "system") {
+    document.documentElement.removeAttribute("lang");
+  } else {
+    document.documentElement.lang = preferences.genLanguage;
+  }
+}
+
+function scheduleAutoSave() {
+  if (!preferences.genAutoSave) {
+    return;
+  }
+  if (autoSaveTimer) {
+    window.clearTimeout(autoSaveTimer);
+  }
+  autoSaveTimer = window.setTimeout(async () => {
+    if (!isDirty) {
+      return;
+    }
+    if (currentPath) {
+      await saveFile();
+    } else {
+      saveDraft();
+    }
+  }, 900);
+}
+
+async function checkForUpdates() {
+  try {
+    const currentVersion = await invoke<string>("app_version");
+    if (!preferences.genAutoCheckUpdate) {
+      setStatus(`Current version ${currentVersion}, auto-check is disabled`);
+      openPicgoResultModal(
+        "检查更新",
+        `当前版本: ${currentVersion}\n\n更新源未配置。请按 docs/update-deployment.md 完成更新服务部署后启用自动更新。`
+      );
+      return;
+    }
+    setStatus(`Current version ${currentVersion}, update endpoint not configured`);
+    openPicgoResultModal(
+      "检查更新",
+      `当前版本: ${currentVersion}\n自动检查更新已开启，但当前尚未接入发布源。\n请按 docs/update-deployment.md 完成部署。`
+    );
+  } catch (error) {
+    console.error(error);
+    setStatus("Check update failed");
+  }
+}
+
+function ensureSourceSnippet() {
+  if (sourceSnippetEl) {
+    return sourceSnippetEl;
+  }
+  const el = document.createElement("div");
+  el.className = "current-source-snippet hidden";
+  editorPaneEl.appendChild(el);
+  sourceSnippetEl = el;
+  return el;
+}
+
+function hideCurrentSourceSnippet() {
+  if (!sourceSnippetEl) {
+    return;
+  }
+  sourceSnippetEl.classList.add("hidden");
+}
+
+function updateCurrentSourceSnippet() {
+  if (isSourceMode || !preferences.edShowCurrentMarkdownSource || !editor) {
+    hideCurrentSourceSnippet();
+    return;
+  }
+  const { $from } = editor.state.selection;
+  const depth = Math.max(0, $from.depth);
+  const node = $from.node(depth);
+  const nodePos = depth > 0 ? $from.before(depth) : 0;
+  const dom = editor.view.nodeDOM(nodePos) as HTMLElement | null;
+  if (!dom || !node.textContent?.trim()) {
+    hideCurrentSourceSnippet();
+    return;
+  }
+  const snippet = ensureSourceSnippet();
+  const text = node.textContent.length > 220 ? `${node.textContent.slice(0, 220)}...` : node.textContent;
+  snippet.textContent = text;
+  const rect = dom.getBoundingClientRect();
+  const hostRect = editorPaneEl.getBoundingClientRect();
+  snippet.style.left = `${Math.max(8, rect.left - hostRect.left)}px`;
+  snippet.style.top = `${Math.max(8, rect.top - hostRect.top - 30)}px`;
+  snippet.classList.remove("hidden");
+}
+
+function centerSourceCaret() {
+  if (!preferences.edTypewriterCenter || !isSourceMode) {
+    return;
+  }
+  const pos = sourceEditor.selectionStart ?? 0;
+  const text = sourceEditor.value.slice(0, pos);
+  const lines = text.split(/\r?\n/).length - 1;
+  const lineHeight = parseFloat(getComputedStyle(sourceEditor).lineHeight || "22");
+  const caretTop = lines * lineHeight;
+  const viewportCenter = sourceEditor.clientHeight / 2;
+  sourceEditor.scrollTo({ top: Math.max(0, caretTop - viewportCenter), behavior: "auto" });
+}
+
+function centerEditorCaret() {
+  if (!preferences.edTypewriterCenter || isSourceMode || !editor) {
+    return;
+  }
+  const { from } = editor.state.selection;
+  const coords = editor.view.coordsAtPos(from);
+  const hostRect = editorHost.getBoundingClientRect();
+  const caretTop = coords.top - hostRect.top + editorHost.scrollTop;
+  const viewportCenter = editorHost.clientHeight / 2;
+  editorHost.scrollTo({ top: Math.max(0, caretTop - viewportCenter), behavior: "auto" });
+}
+
+function updateTypewriterPosition() {
+  if (!preferences.edTypewriterCenter) {
+    return;
+  }
+  if (isSourceMode) {
+    centerSourceCaret();
+  } else {
+    centerEditorCaret();
+  }
+}
+
+function normalizeHeadingStyle(markdown: string) {
+  if (preferences.mdHeadingStyle !== "setext") {
+    return markdown;
+  }
+  return markdown.replace(
+    /^(#{1,2})\s+(.+)$/gm,
+    (_all, hashes: string, text: string) => {
+      const underline = hashes.length === 1 ? "=" : "-";
+      return `${text}\n${underline.repeat(Math.max(3, text.length))}`;
+    }
+  );
+}
+
+function normalizeListStyle(markdown: string) {
+  const unordered = preferences.mdUnorderedListStyle;
+  let updated = markdown.replace(
+    /^(\s*)[-*+]\s+/gm,
+    (_all, indent: string) => `${indent}${unordered} `
+  );
+  if (preferences.mdOrderedListStyle === "paren") {
+    updated = updated.replace(/^(\s*)(\d+)\.\s+/gm, "$1$2) ");
+  } else {
+    updated = updated.replace(/^(\s*)(\d+)\)\s+/gm, "$1$2. ");
+  }
+  return updated;
+}
+
+function normalizeWhitespacePolicy(markdown: string) {
+  if (preferences.mdExportWhitespacePolicy === "compact") {
+    return markdown
+      .split("\n")
+      .map((line) => line.replace(/[ \t]{2,}/g, " "))
+      .join("\n");
+  }
+  return markdown;
+}
+
+function mapNonCodeLines(markdown: string, transform: (line: string) => string) {
+  const lines = markdown.split("\n");
+  let inFence = false;
+  const out = lines.map((line) => {
+    if (/^\s*```/.test(line)) {
+      inFence = !inFence;
+      return line;
+    }
+    if (inFence) {
+      return line;
+    }
+    return transform(line);
+  });
+  return out.join("\n");
+}
+
+function normalizeUnicodePunctuation(markdown: string) {
+  if (preferences.mdUnicodePunctuation) {
+    return markdown;
+  }
+  const table: Record<string, string> = {
+    "，": ",",
+    "。": ".",
+    "：": ":",
+    "；": ";",
+    "！": "!",
+    "？": "?",
+    "（": "(",
+    "）": ")",
+    "【": "[",
+    "】": "]",
+    "“": "\"",
+    "”": "\"",
+    "‘": "'",
+    "’": "'"
+  };
+  return mapNonCodeLines(markdown, (line) =>
+    line.replace(/[，。：；！？（）【】“”‘’]/g, (char) => table[char] ?? char)
+  );
+}
+
+function applySmartPunctuation(markdown: string) {
+  if (preferences.mdSmartPunctuationMode === "off") {
+    return normalizeUnicodePunctuation(markdown);
+  }
+  let output = markdown;
+  if (preferences.mdSmartDashes) {
+    output = mapNonCodeLines(output, (line) =>
+      line.replace(/---/g, "—").replace(/--/g, "–")
+    );
+  }
+  if (preferences.mdSmartQuotes) {
+    output = mapNonCodeLines(output, (line) =>
+      line
+        .replace(/"([^"\n]+)"/g, "“$1”")
+        .replace(/'([^'\n]+)'/g, "‘$1’")
+    );
+  }
+  return normalizeUnicodePunctuation(output);
+}
+
 function syncPrefsForm() {
+  genStartupModeEl.value = preferences.genStartupMode;
+  genAutoSaveEl.checked = preferences.genAutoSave;
+  genSaveOnSwitchEl.checked = preferences.genSaveOnSwitch;
+  genLanguageEl.value = preferences.genLanguage;
+  genAutoCheckUpdateEl.checked = preferences.genAutoCheckUpdate;
+  genIncludePrereleaseEl.checked = preferences.genIncludePrerelease;
+  genDebugModeEl.checked = preferences.genDebugMode;
+  genTelemetryEl.checked = preferences.genTelemetry;
   imageInsertRuleEl.value = preferences.imageInsertRule;
   imageRuleLocalEl.checked = preferences.imageRuleLocal;
   imageRuleNetworkEl.checked = preferences.imageRuleNetwork;
@@ -487,14 +952,50 @@ function syncPrefsForm() {
   imageAutoConvertUrlEl.checked = preferences.imageAutoConvertUrl;
   uploadServiceEl.value = preferences.uploadService;
   picgoPathEl.value = preferences.picgoPath;
+  mdStrictModeEl.checked = preferences.mdStrictMode;
+  mdHeadingStyleEl.value = preferences.mdHeadingStyle;
+  mdUnorderedListStyleEl.value = preferences.mdUnorderedListStyle;
+  mdOrderedListStyleEl.value = preferences.mdOrderedListStyle;
+  mdInlineMathEl.checked = preferences.mdInlineMath;
+  mdSubscriptEl.checked = preferences.mdSubscript;
+  mdSuperscriptEl.checked = preferences.mdSuperscript;
+  mdHighlightEl.checked = preferences.mdHighlight;
+  mdDiagramsEl.checked = preferences.mdDiagrams;
+  mdSmartPunctuationModeEl.value = preferences.mdSmartPunctuationMode;
+  mdSmartQuotesEl.checked = preferences.mdSmartQuotes;
+  mdSmartDashesEl.checked = preferences.mdSmartDashes;
+  mdUnicodePunctuationEl.checked = preferences.mdUnicodePunctuation;
+  mdCodeShowLineNumbersEl.checked = preferences.mdCodeShowLineNumbers;
+  mdCodeWrapEl.checked = preferences.mdCodeWrap;
+  mdCodeIndentEl.value = String(preferences.mdCodeIndent);
+  mdMathAutoNumberEl.checked = preferences.mdMathAutoNumber;
+  mdMathAllowBackslashNewlineEl.checked = preferences.mdMathAllowBackslashNewline;
+  mdMathEnablePhysicsEl.checked = preferences.mdMathEnablePhysics;
+  mdMathExportHtmlModeEl.value = preferences.mdMathExportHtmlMode;
+  mdFirstLineIndentEl.checked = preferences.mdFirstLineIndent;
+  mdShowBrEl.checked = preferences.mdShowBr;
+  mdEditWhitespacePolicyEl.value = preferences.mdEditWhitespacePolicy;
+  mdExportWhitespacePolicyEl.value = preferences.mdExportWhitespacePolicy;
+  edDefaultIndentEl.value = String(preferences.edDefaultIndent);
+  edAlignIndentEl.checked = preferences.edAlignIndent;
+  edPairBracketsQuotesEl.checked = preferences.edPairBracketsQuotes;
+  edPairMarkdownSymbolsEl.checked = preferences.edPairMarkdownSymbols;
+  edShowCurrentMarkdownSourceEl.checked = preferences.edShowCurrentMarkdownSource;
+  edCopyPlainAsMarkdownEl.checked = preferences.edCopyPlainAsMarkdown;
+  edCopyCutWholeLineEl.checked = preferences.edCopyCutWholeLine;
+  edNewlineLfEl.checked = preferences.edNewlineStyle === "lf";
+  edNewlineCrlfEl.checked = preferences.edNewlineStyle === "crlf";
+  edSpellcheckModeEl.value = preferences.edSpellcheckMode;
+  edTypewriterCenterEl.checked = preferences.edTypewriterCenter;
 }
 
-function openPreferences(tab: string = "image") {
+function openPreferences(tab: string = "general") {
   prefsModal.classList.remove("hidden");
-  prefsNavItems.forEach((item) => {
-    item.classList.toggle("active", item.dataset.prefsTab === tab);
-  });
+  setActivePrefsTab(tab);
   syncPrefsForm();
+  applyGeneralPreferences();
+  applyMarkdownPreferences();
+  applyEditorPreferences();
 }
 
 function closePreferences() {
@@ -1109,7 +1610,12 @@ function getMarkdown() {
   if (!editor) {
     return "";
   }
-  return turndown.turndown(editor.getHTML());
+  let markdown = turndown.turndown(editor.getHTML());
+  markdown = normalizeHeadingStyle(markdown);
+  markdown = normalizeListStyle(markdown);
+  markdown = normalizeWhitespacePolicy(markdown);
+  markdown = applySmartPunctuation(markdown);
+  return markdown;
 }
 
 async function setMarkdown(markdown: string) {
@@ -1119,6 +1625,17 @@ async function setMarkdown(markdown: string) {
   const normalized = markdown.replace(/\t/g, "  ");
   const html = preserveLeadingWhitespace(await decorateImages(md.render(normalized)));
   editor.commands.setContent(html, false);
+}
+
+function getSelectedMarkdownFromEditor() {
+  if (!editor) {
+    return "";
+  }
+  const { from, to } = editor.state.selection;
+  if (from === to) {
+    return "";
+  }
+  return editor.state.doc.textBetween(from, to, "\n", "\n").trim();
 }
 
 function scheduleOutline() {
@@ -1411,8 +1928,15 @@ async function openPath(
   const updateFolder = options.updateFolder ?? false;
   const checkDirty = options.checkDirty ?? true;
   try {
-    if (checkDirty && !(await maybeSaveBeforeLeave())) {
-      return;
+    if (checkDirty && isDirty) {
+      if (preferences.genSaveOnSwitch) {
+        const saved = await saveFile();
+        if (!saved) {
+          return;
+        }
+      } else if (!(await maybeSaveBeforeLeave())) {
+        return;
+      }
     }
     const pathValue = toPathString(path, "");
     if (!pathValue) {
@@ -1455,7 +1979,7 @@ async function saveFile(): Promise<boolean> {
   }
   try {
     const content = isSourceMode ? sourceEditor.value : getMarkdown();
-    await writeTextFile(currentPath, content);
+    await writeTextFile(currentPath, toNewlineStyle(content));
     if (!currentFolder) {
       const folder = await dirname(currentPath);
       setFolder(folder);
@@ -1483,7 +2007,7 @@ async function saveFileAs(): Promise<boolean> {
   }
   try {
     const content = isSourceMode ? sourceEditor.value : getMarkdown();
-    await writeTextFile(path, content);
+    await writeTextFile(path, toNewlineStyle(content));
     setFilePath(path);
     const folder = await dirname(path);
     setFolder(folder);
@@ -1522,15 +2046,19 @@ function setSourceMode(enabled: boolean) {
   sourceEditor.classList.toggle("hidden", !enabled);
   if (enabled) {
     hideCodeLanguagePicker();
+    hideCurrentSourceSnippet();
     sourceEditor.value = getMarkdown();
     sourceEditor.focus();
   } else {
     void setMarkdown(sourceEditor.value);
     editor?.commands.focus();
     updateCodeLanguagePicker();
+    updateCurrentSourceSnippet();
   }
+  applyEditorPreferences();
   updateWordCount();
   updateOutline();
+  updateTypewriterPosition();
 }
 
 function toggleSourceMode() {
@@ -2306,7 +2834,7 @@ async function setupWindowHandlers() {
         break;
       }
       case "file_preferences":
-        openPreferences("image");
+        openPreferences("general");
         break;
       case "file_save":
         await saveFile();
@@ -2386,27 +2914,37 @@ function initEditor() {
       setDirtyFlag();
       updateWordCount();
       scheduleDraftSave();
+      scheduleAutoSave();
       scheduleOutline();
       highlightOutlineByScroll();
       updateCodeLanguagePicker();
     },
     onSelectionUpdate: () => {
       updateCodeLanguagePicker();
+      updateCurrentSourceSnippet();
+      updateTypewriterPosition();
     },
     onFocus: () => {
       updateCodeLanguagePicker();
+      updateCurrentSourceSnippet();
+      updateTypewriterPosition();
     },
     onBlur: () => {
       if (!isCodeLanguageInteracting) {
         updateCodeLanguagePicker();
       }
+      hideCurrentSourceSnippet();
     }
   });
 }
 
 function initPreferencesUI() {
   preferences = loadPreferences();
+  setActivePrefsTab("general");
   syncPrefsForm();
+  applyGeneralPreferences();
+  applyMarkdownPreferences();
+  applyEditorPreferences();
 
   prefsCloseBtn.addEventListener("click", () => closePreferences());
   prefsModal.addEventListener("click", (event) => {
@@ -2432,9 +2970,88 @@ function initPreferencesUI() {
 
   prefsNavItems.forEach((item) => {
     item.addEventListener("click", () => {
-      prefsNavItems.forEach((i) => i.classList.remove("active"));
-      item.classList.add("active");
+      const tab = item.dataset.prefsTab ?? "image";
+      setActivePrefsTab(tab);
     });
+  });
+
+  const rerenderEditorFromCurrent = async () => {
+    if (isSourceMode) {
+      return;
+    }
+    const markdown = getMarkdown();
+    await setMarkdown(markdown);
+    updateOutline();
+    updateWordCount();
+    applyMarkdownPreferences();
+  };
+
+  const applyEditorState = () => {
+    applyEditorPreferences();
+    updateCurrentSourceSnippet();
+    updateTypewriterPosition();
+  };
+
+  genStartupModeEl.addEventListener("change", () => {
+    preferences.genStartupMode = genStartupModeEl.value as "new" | "restore" | "none";
+    savePreferences();
+  });
+  genAutoSaveEl.addEventListener("change", () => {
+    preferences.genAutoSave = genAutoSaveEl.checked;
+    savePreferences();
+  });
+  genSaveOnSwitchEl.addEventListener("change", () => {
+    preferences.genSaveOnSwitch = genSaveOnSwitchEl.checked;
+    savePreferences();
+  });
+  genLanguageEl.addEventListener("change", () => {
+    preferences.genLanguage = genLanguageEl.value as "system" | "zh-CN" | "en-US";
+    savePreferences();
+    applyGeneralPreferences();
+  });
+  genAutoCheckUpdateEl.addEventListener("change", () => {
+    preferences.genAutoCheckUpdate = genAutoCheckUpdateEl.checked;
+    savePreferences();
+  });
+  genIncludePrereleaseEl.addEventListener("change", () => {
+    preferences.genIncludePrerelease = genIncludePrereleaseEl.checked;
+    savePreferences();
+  });
+  genDebugModeEl.addEventListener("change", () => {
+    preferences.genDebugMode = genDebugModeEl.checked;
+    savePreferences();
+    setStatus(genDebugModeEl.checked ? "Debug mode enabled" : "Debug mode disabled");
+  });
+  genTelemetryEl.addEventListener("change", () => {
+    preferences.genTelemetry = genTelemetryEl.checked;
+    savePreferences();
+  });
+  genRestoreDraftBtn.addEventListener("click", async () => {
+    await maybeRestoreDraft(currentPath, isSourceMode ? sourceEditor.value : getMarkdown());
+  });
+  genCheckUpdateBtn.addEventListener("click", () => {
+    void checkForUpdates();
+  });
+  genCustomizeShortcutBtn.addEventListener("click", () => {
+    setStatus("Shortcut customization UI will be added in a later build");
+  });
+  genResetDialogsBtn.addEventListener("click", () => {
+    setStatus("All warning dialogs reset");
+  });
+  genOpenAdvancedBtn.addEventListener("click", () => {
+    openPicgoResultModal(
+      "高级设置",
+      "高级设置文件位置:\nlocalStorage key: ease-md:prefs\n\n可直接编辑后重启应用生效。"
+    );
+  });
+  genResetAdvancedBtn.addEventListener("click", () => {
+    preferences = { ...defaultPreferences };
+    savePreferences();
+    syncPrefsForm();
+    applyGeneralPreferences();
+    applyMarkdownPreferences();
+    applyEditorPreferences();
+    setStatus("Advanced settings reset");
   });
 
   imageInsertRuleEl.addEventListener("change", () => {
@@ -2468,6 +3085,178 @@ function initPreferencesUI() {
   picgoPathEl.addEventListener("change", () => {
     preferences.picgoPath = picgoPathEl.value.trim();
     savePreferences();
+  });
+
+  const bindCheck = (
+    el: HTMLInputElement,
+    apply: (value: boolean) => void,
+    rerender = false
+  ) => {
+    el.addEventListener("change", () => {
+      apply(el.checked);
+      savePreferences();
+      applyMarkdownPreferences();
+      if (rerender) {
+        void rerenderEditorFromCurrent();
+      }
+    });
+  };
+  const bindSelect = (
+    el: HTMLSelectElement,
+    apply: (value: string) => void,
+    rerender = false
+  ) => {
+    el.addEventListener("change", () => {
+      apply(el.value);
+      savePreferences();
+      applyMarkdownPreferences();
+      if (rerender) {
+        void rerenderEditorFromCurrent();
+      }
+    });
+  };
+
+  bindCheck(mdStrictModeEl, (value) => {
+    preferences.mdStrictMode = value;
+  });
+  bindSelect(mdHeadingStyleEl, (value) => {
+    preferences.mdHeadingStyle = value as "atx" | "setext";
+  });
+  bindSelect(mdUnorderedListStyleEl, (value) => {
+    preferences.mdUnorderedListStyle = value as "-" | "*" | "+";
+  });
+  bindSelect(mdOrderedListStyleEl, (value) => {
+    preferences.mdOrderedListStyle = value as "dot" | "paren";
+  });
+  bindCheck(mdInlineMathEl, (value) => {
+    preferences.mdInlineMath = value;
+  });
+  bindCheck(mdSubscriptEl, (value) => {
+    preferences.mdSubscript = value;
+  });
+  bindCheck(mdSuperscriptEl, (value) => {
+    preferences.mdSuperscript = value;
+  });
+  bindCheck(mdHighlightEl, (value) => {
+    preferences.mdHighlight = value;
+  });
+  bindCheck(mdDiagramsEl, (value) => {
+    preferences.mdDiagrams = value;
+  });
+  bindSelect(
+    mdSmartPunctuationModeEl,
+    (value) => {
+      preferences.mdSmartPunctuationMode = value as "input" | "off";
+    },
+    true
+  );
+  bindCheck(mdSmartQuotesEl, (value) => {
+    preferences.mdSmartQuotes = value;
+  });
+  bindCheck(mdSmartDashesEl, (value) => {
+    preferences.mdSmartDashes = value;
+  });
+  bindCheck(mdUnicodePunctuationEl, (value) => {
+    preferences.mdUnicodePunctuation = value;
+  });
+  bindCheck(mdCodeShowLineNumbersEl, (value) => {
+    preferences.mdCodeShowLineNumbers = value;
+  });
+  bindCheck(mdCodeWrapEl, (value) => {
+    preferences.mdCodeWrap = value;
+  });
+  bindSelect(mdCodeIndentEl, (value) => {
+    preferences.mdCodeIndent = Number(value) as 2 | 4 | 8;
+  });
+  bindCheck(mdMathAutoNumberEl, (value) => {
+    preferences.mdMathAutoNumber = value;
+  });
+  bindCheck(mdMathAllowBackslashNewlineEl, (value) => {
+    preferences.mdMathAllowBackslashNewline = value;
+  });
+  bindCheck(mdMathEnablePhysicsEl, (value) => {
+    preferences.mdMathEnablePhysics = value;
+  });
+  bindSelect(mdMathExportHtmlModeEl, (value) => {
+    preferences.mdMathExportHtmlMode = value as "svg" | "mathml";
+  });
+  bindCheck(mdFirstLineIndentEl, (value) => {
+    preferences.mdFirstLineIndent = value;
+  });
+  bindCheck(
+    mdShowBrEl,
+    (value) => {
+      preferences.mdShowBr = value;
+    },
+    true
+  );
+  bindSelect(mdEditWhitespacePolicyEl, (value) => {
+    preferences.mdEditWhitespacePolicy = value as "preserve" | "compact";
+  });
+  bindSelect(mdExportWhitespacePolicyEl, (value) => {
+    preferences.mdExportWhitespacePolicy = value as "preserve" | "compact";
+  });
+
+  bindSelect(edDefaultIndentEl, (value) => {
+    preferences.edDefaultIndent = Number(value) as 2 | 4 | 6 | 8;
+  });
+  bindCheck(edAlignIndentEl, (value) => {
+    preferences.edAlignIndent = value;
+  });
+  bindCheck(edPairBracketsQuotesEl, (value) => {
+    preferences.edPairBracketsQuotes = value;
+  });
+  bindCheck(edPairMarkdownSymbolsEl, (value) => {
+    preferences.edPairMarkdownSymbols = value;
+  });
+  bindCheck(edShowCurrentMarkdownSourceEl, (value) => {
+    preferences.edShowCurrentMarkdownSource = value;
+  });
+  bindCheck(edCopyPlainAsMarkdownEl, (value) => {
+    preferences.edCopyPlainAsMarkdown = value;
+  });
+  bindCheck(edCopyCutWholeLineEl, (value) => {
+    preferences.edCopyCutWholeLine = value;
+  });
+  bindSelect(edSpellcheckModeEl, (value) => {
+    preferences.edSpellcheckMode = value as "auto" | "off" | "en-US" | "zh-CN";
+  });
+  bindCheck(edTypewriterCenterEl, (value) => {
+    preferences.edTypewriterCenter = value;
+  });
+  edNewlineLfEl.addEventListener("change", () => {
+    if (!edNewlineLfEl.checked) {
+      return;
+    }
+    preferences.edNewlineStyle = "lf";
+    savePreferences();
+  });
+  edNewlineCrlfEl.addEventListener("change", () => {
+    if (!edNewlineCrlfEl.checked) {
+      return;
+    }
+    preferences.edNewlineStyle = "crlf";
+    savePreferences();
+  });
+  edTypewriterOffBtn.addEventListener("click", () => {
+    preferences.edTypewriterCenter = false;
+    savePreferences();
+    syncPrefsForm();
+    applyEditorState();
+  });
+
+  [
+    edDefaultIndentEl,
+    edAlignIndentEl,
+    edPairBracketsQuotesEl,
+    edPairMarkdownSymbolsEl,
+    edShowCurrentMarkdownSourceEl,
+    edCopyPlainAsMarkdownEl,
+    edCopyCutWholeLineEl,
+    edSpellcheckModeEl,
+    edTypewriterCenterEl
+  ].forEach((el) => {
+    el.addEventListener("change", applyEditorState);
   });
 
   pickPicgoBtn.addEventListener("click", async () => {
@@ -2563,10 +3352,111 @@ sourceEditor.addEventListener("input", () => {
   setDirtyFlag();
   updateWordCount();
   scheduleDraftSave();
+  scheduleAutoSave();
   scheduleOutline();
+  updateTypewriterPosition();
 });
 
 sourceEditor.addEventListener("scroll", () => hideImageMeta());
+sourceEditor.addEventListener("click", () => updateTypewriterPosition());
+sourceEditor.addEventListener("keyup", () => updateTypewriterPosition());
+sourceEditor.addEventListener("keydown", (event) => {
+  if (!isSourceMode) {
+    return;
+  }
+  const start = sourceEditor.selectionStart ?? 0;
+  const end = sourceEditor.selectionEnd ?? start;
+  const hasSelection = start !== end;
+
+  if (preferences.edCopyCutWholeLine && (event.key === "c" || event.key === "x") && (event.ctrlKey || event.metaKey)) {
+    if (!hasSelection) {
+      event.preventDefault();
+      const value = sourceEditor.value;
+      const { start: lineStart, end: lineEnd } = getSourceLineBounds(value, start);
+      const lineText = value.slice(lineStart, lineEnd);
+      navigator.clipboard.writeText(lineText).catch(() => {});
+      if (event.key === "x") {
+        const removeEnd = lineEnd < value.length ? lineEnd + 1 : lineEnd;
+        sourceEditor.setRangeText("", lineStart, removeEnd, "start");
+        isDirty = true;
+        setDirtyFlag();
+        updateWordCount();
+        scheduleDraftSave();
+        scheduleOutline();
+      }
+      return;
+    }
+  }
+
+  if (event.key === "Tab") {
+    event.preventDefault();
+    const value = sourceEditor.value;
+    const before = value.slice(0, start);
+    const insert = preferences.edAlignIndent
+      ? getIndentForNextTab(before.slice(before.lastIndexOf("\n") + 1))
+      : " ".repeat(preferences.edDefaultIndent);
+    sourceEditor.setRangeText(insert, start, end, "end");
+    return;
+  }
+
+  if (event.key === "Enter") {
+    const value = sourceEditor.value;
+    const indent = getSourceCurrentLineIndent(value, start);
+    if (indent.length > 0) {
+      event.preventDefault();
+      sourceEditor.setRangeText(`\n${indent}`, start, end, "end");
+    }
+    return;
+  }
+
+  const pairMap: Record<string, string> = {
+    "\"": "\"",
+    "'": "'",
+    "(": ")",
+    "[": "]",
+    "{": "}",
+    "*": "*",
+    "_": "_",
+    "`": "`",
+    "~": "~"
+  };
+  const pair = pairMap[event.key];
+  if (!pair) {
+    return;
+  }
+  const isBracketOrQuote = ["\"", "'", "(", "[", "{"].includes(event.key);
+  const isMarkdownPair = ["*", "_", "`", "~"].includes(event.key);
+  if (
+    (isBracketOrQuote && !preferences.edPairBracketsQuotes) ||
+    (isMarkdownPair && !preferences.edPairMarkdownSymbols)
+  ) {
+    return;
+  }
+  event.preventDefault();
+  if (hasSelection) {
+    const selected = sourceEditor.value.slice(start, end);
+    sourceEditor.setRangeText(`${event.key}${selected}${pair}`, start, end, "select");
+    sourceEditor.selectionStart = start + 1;
+    sourceEditor.selectionEnd = end + 1;
+  } else {
+    sourceEditor.setRangeText(`${event.key}${pair}`, start, end, "start");
+    sourceEditor.selectionStart = start + 1;
+    sourceEditor.selectionEnd = start + 1;
+  }
+});
+
+editorHost.addEventListener("copy", (event) => {
+  if (!preferences.edCopyPlainAsMarkdown || isSourceMode || !editor) {
+    return;
+  }
+  const markdown = getSelectedMarkdownFromEditor();
+  if (!markdown) {
+    return;
+  }
+  event.preventDefault();
+  event.clipboardData?.setData("text/plain", markdown);
+});
+
 folderListEl.addEventListener("scroll", () => hideHoverTooltip());
 window.addEventListener("blur", () => hideHoverTooltip());
 
@@ -2651,8 +3541,13 @@ contextMenu.addEventListener("click", async (event) => {
     hideImageMeta();
     highlightOutlineByScroll();
     updateCodeLanguagePicker();
+    updateCurrentSourceSnippet();
+    updateTypewriterPosition();
   });
-  window.addEventListener("resize", () => updateCodeLanguagePicker());
+  window.addEventListener("resize", () => {
+    updateCodeLanguagePicker();
+    updateCurrentSourceSnippet();
+  });
   window.addEventListener("click", (event) => {
     if (!codeLanguagePickerEl) {
       return;
@@ -2811,16 +3706,24 @@ function initApp() {
   updateWordCount();
   setDirtyFlag();
   initTheme();
+  let openedFromQuery = false;
   try {
     const url = new URL(window.location.href);
     const openPathParam = url.searchParams.get("open");
     if (openPathParam) {
       const decoded = decodeURIComponent(openPathParam);
       void openPath(decoded, { updateFolder: false, checkDirty: false });
+      openedFromQuery = true;
       url.searchParams.delete("open");
       window.history.replaceState({}, "", url.toString());
     }
   } catch {}
+  if (!openedFromQuery && preferences.genStartupMode === "restore") {
+    const recents = loadRecent();
+    if (recents.length > 0) {
+      void openPath(recents[0], { updateFolder: true, checkDirty: false });
+    }
+  }
   void setupWindowHandlers();
 }
 

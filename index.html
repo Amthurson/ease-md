@@ -74,7 +74,64 @@
             <button class="prefs-nav-item" data-prefs-tab="export">导出</button>
           </aside>
           <main class="prefs-content">
-            <section id="prefsImagePanel" class="prefs-panel">
+            <section id="prefsGeneralPanel" class="prefs-panel hidden" data-prefs-panel="general">
+              <h3>通用</h3>
+              <div class="prefs-row">
+                <label for="genStartupMode">启动选项</label>
+                <select id="genStartupMode">
+                  <option value="new">打开新文件</option>
+                  <option value="restore">恢复上次文件</option>
+                  <option value="none">不自动打开</option>
+                </select>
+              </div>
+
+              <h4>保存 & 恢复</h4>
+              <label class="prefs-check"><input type="checkbox" id="genAutoSave" />自动保存</label>
+              <label class="prefs-check"><input type="checkbox" id="genSaveOnSwitch" />切换文件时自动保存上一个文件更改</label>
+              <div class="prefs-actions">
+                <button id="genRestoreDraftBtn" class="ghost small">恢复未保存草稿</button>
+              </div>
+
+              <h4>语言</h4>
+              <div class="prefs-row">
+                <label for="genLanguage">语言</label>
+                <select id="genLanguage">
+                  <option value="system">系统语言</option>
+                  <option value="zh-CN">简体中文</option>
+                  <option value="en-US">English</option>
+                </select>
+              </div>
+
+              <h4>更新</h4>
+              <div class="prefs-actions">
+                <button id="genCheckUpdateBtn" class="ghost small">检查更新</button>
+              </div>
+              <label class="prefs-check"><input type="checkbox" id="genAutoCheckUpdate" />自动检查更新</label>
+              <label class="prefs-check"><input type="checkbox" id="genIncludePrerelease" />更新至开发版</label>
+
+              <h4>快捷键</h4>
+              <div class="prefs-actions">
+                <button id="genCustomizeShortcutBtn" class="ghost small">自定义快捷键</button>
+              </div>
+
+              <h4>对话框</h4>
+              <div class="prefs-actions">
+                <button id="genResetDialogsBtn" class="ghost small">重置全部警告提示对话框</button>
+              </div>
+
+              <h4>高级设置</h4>
+              <label class="prefs-check"><input type="checkbox" id="genDebugMode" />开启调试模式</label>
+              <label class="prefs-check"><input type="checkbox" id="genTelemetry" />发送匿名使用数据</label>
+              <div class="prefs-actions">
+                <button id="genOpenAdvancedBtn" class="ghost small">打开高级设置</button>
+                <button id="genResetAdvancedBtn" class="ghost small">重置高级设置</button>
+              </div>
+            </section>
+            <section id="prefsAppearancePanel" class="prefs-panel hidden" data-prefs-panel="appearance">
+              <h3>外观</h3>
+              <div class="prefs-section-note">外观设置将在后续版本继续补齐。</div>
+            </section>
+            <section id="prefsImagePanel" class="prefs-panel" data-prefs-panel="image">
               <h3>图像</h3>
               <div class="prefs-row">
                 <label for="imageInsertRule">插入图片时</label>
@@ -104,6 +161,150 @@
               <div class="prefs-actions">
                 <button id="validatePicgoBtn" class="ghost small">验证图片上传选项</button>
               </div>
+            </section>
+            <section id="prefsEditorPanel" class="prefs-panel hidden" data-prefs-panel="editor">
+              <h3>编辑器</h3>
+              <div class="prefs-section-note">部分选项改动立即生效</div>
+
+              <h4>默认缩进</h4>
+              <div class="prefs-row">
+                <label for="edDefaultIndent">空格数</label>
+                <select id="edDefaultIndent">
+                  <option value="2">2</option>
+                  <option value="4">4</option>
+                  <option value="6">6</option>
+                  <option value="8">8</option>
+                </select>
+              </div>
+              <label class="prefs-check"><input type="checkbox" id="edAlignIndent" />对齐缩进（Tab 按下对齐到缩进宽度）</label>
+
+              <h4>使用成对符号</h4>
+              <label class="prefs-check"><input type="checkbox" id="edPairBracketsQuotes" />匹配括号和引号</label>
+              <label class="prefs-check"><input type="checkbox" id="edPairMarkdownSymbols" />匹配 Markdown 字符（* _ ` ~）</label>
+
+              <h4>即时渲染</h4>
+              <label class="prefs-check"><input type="checkbox" id="edShowCurrentMarkdownSource" />显示当前块元素的 Markdown 源码</label>
+
+              <h4>默认复制行为</h4>
+              <label class="prefs-check"><input type="checkbox" id="edCopyPlainAsMarkdown" />复制纯文本时复制 Markdown 源码</label>
+              <label class="prefs-check"><input type="checkbox" id="edCopyCutWholeLine" />复制或剪切时，若未选择文本则操作整行</label>
+
+              <h4>默认换行符</h4>
+              <div class="prefs-radio-group">
+                <label class="prefs-check"><input type="radio" id="edNewlineLf" name="edNewlineStyle" />LF (Unix Style)</label>
+                <label class="prefs-check"><input type="radio" id="edNewlineCrlf" name="edNewlineStyle" />CRLF (Windows Style)</label>
+              </div>
+
+              <h4>拼写检查</h4>
+              <div class="prefs-row">
+                <label for="edSpellcheckMode">模式</label>
+                <select id="edSpellcheckMode">
+                  <option value="auto">自动检测语言</option>
+                  <option value="off">关闭</option>
+                  <option value="en-US">English (US)</option>
+                  <option value="zh-CN">中文（简体）</option>
+                </select>
+              </div>
+
+              <h4>打字机模式</h4>
+              <label class="prefs-check"><input type="checkbox" id="edTypewriterCenter" />始终保持光标在屏幕中间</label>
+              <div class="prefs-actions">
+                <button id="edTypewriterOffBtn" class="ghost small">关闭打字机模式 / 专注模式</button>
+              </div>
+            </section>
+            <section id="prefsMarkdownPanel" class="prefs-panel hidden" data-prefs-panel="markdown">
+              <h3>Markdown</h3>
+              <div class="prefs-section-note">下面部分选项调整后在重新渲染时生效</div>
+
+              <h4>Markdown 语法偏好</h4>
+              <label class="prefs-check"><input type="checkbox" id="mdStrictMode" />严格模式</label>
+              <div class="prefs-row">
+                <label for="mdHeadingStyle">标题样式</label>
+                <select id="mdHeadingStyle">
+                  <option value="atx">atx (#)</option>
+                  <option value="setext">setext (=== / ---)</option>
+                </select>
+              </div>
+              <div class="prefs-row">
+                <label for="mdUnorderedListStyle">无序列表</label>
+                <select id="mdUnorderedListStyle">
+                  <option value="-">-</option>
+                  <option value="*">*</option>
+                  <option value="+">+</option>
+                </select>
+              </div>
+              <div class="prefs-row">
+                <label for="mdOrderedListStyle">有序列表</label>
+                <select id="mdOrderedListStyle">
+                  <option value="dot">1. 2. 3.</option>
+                  <option value="paren">1) 2) 3)</option>
+                </select>
+              </div>
+
+              <h4>Markdown 扩展语法</h4>
+              <label class="prefs-check"><input type="checkbox" id="mdInlineMath" />内联公式（$LaTeX$）</label>
+              <label class="prefs-check"><input type="checkbox" id="mdSubscript" />下标（H~2~O）</label>
+              <label class="prefs-check"><input type="checkbox" id="mdSuperscript" />上标（X^2^）</label>
+              <label class="prefs-check"><input type="checkbox" id="mdHighlight" />高亮（==key==）</label>
+              <label class="prefs-check"><input type="checkbox" id="mdDiagrams" />图表（Mermaid / 流程图）</label>
+
+              <h4>智能标点</h4>
+              <div class="prefs-row">
+                <label for="mdSmartPunctuationMode">模式</label>
+                <select id="mdSmartPunctuationMode">
+                  <option value="input">输入时转换</option>
+                  <option value="off">关闭</option>
+                </select>
+              </div>
+              <label class="prefs-check"><input type="checkbox" id="mdSmartQuotes" />智能引号</label>
+              <label class="prefs-check"><input type="checkbox" id="mdSmartDashes" />智能破折号</label>
+              <label class="prefs-check"><input type="checkbox" id="mdUnicodePunctuation" />解析 Markdown 时允许转化 Unicode 标点</label>
+
+              <h4>代码块</h4>
+              <label class="prefs-check"><input type="checkbox" id="mdCodeShowLineNumbers" />显示行号</label>
+              <label class="prefs-check"><input type="checkbox" id="mdCodeWrap" checked />代码块自动换行</label>
+              <div class="prefs-row">
+                <label for="mdCodeIndent">代码缩进</label>
+                <select id="mdCodeIndent">
+                  <option value="2">2</option>
+                  <option value="4" selected>4</option>
+                  <option value="8">8</option>
+                </select>
+              </div>
+
+              <h4>公式</h4>
+              <label class="prefs-check"><input type="checkbox" id="mdMathAutoNumber" />自动添加序号</label>
+              <label class="prefs-check"><input type="checkbox" id="mdMathAllowBackslashNewline" checked />支持使用 \\ 和 \newline 换行</label>
+              <label class="prefs-check"><input type="checkbox" id="mdMathEnablePhysics" />启用 physics 包</label>
+              <div class="prefs-row">
+                <label for="mdMathExportHtmlMode">复制/导出无格式 HTML</label>
+                <select id="mdMathExportHtmlMode">
+                  <option value="svg">使用 SVG</option>
+                  <option value="mathml">使用 MathML</option>
+                </select>
+              </div>
+
+              <h4>空格与换行</h4>
+              <label class="prefs-check"><input type="checkbox" id="mdFirstLineIndent" />首行缩进</label>
+              <label class="prefs-check"><input type="checkbox" id="mdShowBr" checked />编辑时显示 &lt;br/&gt;</label>
+              <div class="prefs-row">
+                <label for="mdEditWhitespacePolicy">编辑时</label>
+                <select id="mdEditWhitespacePolicy">
+                  <option value="preserve">保留连续空格与单个换行</option>
+                  <option value="compact">压缩连续空格</option>
+                </select>
+              </div>
+              <div class="prefs-row">
+                <label for="mdExportWhitespacePolicy">导出与打印</label>
+                <select id="mdExportWhitespacePolicy">
+                  <option value="preserve">保留连续空格与单个换行</option>
+                  <option value="compact">压缩连续空格</option>
+                </select>
+              </div>
+            </section>
+            <section id="prefsExportPanel" class="prefs-panel hidden" data-prefs-panel="export">
+              <h3>导出</h3>
+              <div class="prefs-section-note">导出设置将在后续版本继续补齐。</div>
             </section>
           </main>
         </div>
