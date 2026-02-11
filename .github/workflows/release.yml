@@ -11,6 +11,15 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
+    env:
+      HTTP_PROXY: ""
+      HTTPS_PROXY: ""
+      ALL_PROXY: ""
+      http_proxy: ""
+      https_proxy: ""
+      all_proxy: ""
+      npm_config_proxy: ""
+      npm_config_https_proxy: ""
 
     steps:
       - name: Checkout
